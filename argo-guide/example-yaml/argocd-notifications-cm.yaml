@@ -1,0 +1,95 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-notifications-cm
+data:
+  # 觸發器定義了應傳送通知的條件，以及產生訊息所需的範本清單
+  # 收件者可以訂閱觸發器，並指定所需的訊息範本和目的地通知服務。
+  trigger.on-sync-status-unknown: |
+    - when: app.status.sync.status == 'Unknown'
+      send: [my-custom-template]
+
+  # 可選的 'oncePer' 屬性確保每個指定的欄位值只傳送一次通知
+  # 例如，以下是每個同步修訂版本只觸發一次
+  trigger.on-deployed: |
+    - when: app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
+      oncePer: app.status.sync.revision
+      send: [app-sync-succeeded]
+
+  # 範本用於產生通知範本訊息
+  template.my-custom-template: |
+    message: |
+      應用程式詳細資訊：{{.context.argocdUrl}}/applications/{{.app.metadata.name}}。
+
+  # 範本可能具有通知服務特定的欄位。例如，slack 訊息可能包含註釋
+  template.my-custom-template-slack-template: |
+    message: |
+      應用程式 {{.app.metadata.name}} 的同步狀態為 {{.app.status.sync.status}}。
+      應用程式詳細資訊：{{.context.argocdUrl}}/applications/{{.app.metadata.name}}。
+    email:
+      subject: 應用程式 {{.app.metadata.name}} 的同步狀態為 {{.app.status.sync.status}}
+    slack:
+      attachments: |
+        [{
+          "title": "{{.app.metadata.name}}",
+          "title_link": "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+          "color": "#18be52"
+        }]
+
+  # 如果在訂閱中未明確指定觸發器，則保留預設使用的觸發器清單
+  defaultTriggers: |
+    - on-sync-status-unknown
+
+  # 通知服務用於傳遞訊息。
+  # 服務定義可能會使用 $my-key 格式參考 argocd-notifications-secret Secret 中的值
+  # 服務格式鍵為：service.<type>.<optional-custom-name>
+  #  Slack
+  service.slack: |
+    token: $slack-token
+    username: <override-username> # 可選的使用者名稱
+    icon: <override-icon> # 可選的訊息圖示（支援表情符號和 url 表示法）
+
+  #  名為 mattermost 的基於 Slack 的通知程式
+  service.slack.mattermost: |
+    apiURL: https://my-mattermost-url.com/api
+    token: $slack-token
+    username: <override-username> # 可選的使用者名稱
+    icon: <override-icon> # 可選的訊息圖示（支援表情符號和 url 表示法）
+
+  #  電子郵件
+  service.email: |
+    host: smtp.gmail.com
+    port: 587
+    from: <myemail>@gmail.com
+    username: $email-username
+    password: $email-password
+
+  #  Opsgenie
+  service.opsgenie: |
+    apiUrl: api.opsgenie.com
+    apiKeys:
+      $opsgenie-team-id: $opsgenie-team-api-key
+      ...
+
+  #  Telegram
+  service.telegram: |
+    token: $telegram-token
+
+  # Context 包含可在範本中參考的變數清單
+  context: |
+    argocdUrl: https://cd.apps.argoproj.io/
+
+  # 包含集中管理的通用應用程式訂閱
+  subscriptions: |
+    # on-sync-status-unknown 觸發器通知的訂閱
+    - recipients:
+      - slack:test2
+      - email:test@gmail.com
+      triggers:
+      - on-sync-status-unknown
+    # 僅限於具有相符標籤的應用程式的訂閱
+    - recipients:
+      - slack:test3
+      selector: test=true
+      triggers:
+      - on-sync-status-unknown

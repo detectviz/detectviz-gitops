@@ -1,0 +1,305 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  labels:
+    app.kubernetes.io/name: argocd-cmd-params-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  # Repo server 地址。（預設 "argocd-repo-server:8081"）
+  repo.server: "argocd-repo-server:8081"
+
+  # Commit server 地址。（預設 "argocd-commit-server:8086"）
+  commit.server: "argocd-commit-server:8086"
+
+  # Redis server 主機名稱和端口（例如 argocd-redis:6379）
+  redis.server: "argocd-redis:6379"
+  # 為發送到 Redis 的數據啟用壓縮，使用所需的壓縮演算法。（預設 'gzip'）
+  redis.compression: gzip
+  # Redis 數據庫
+  redis.db:
+
+  # 啟用 alpha "manifest hydrator" 功能。（預設 "false"）
+  hydrator.enabled: "false"
+
+  # Open-Telemetry collector 地址：（例如 "otel-collector:4317"）
+  otlp.address: ""
+  # Open-Telemetry collector 不安全：（例如 "true"）
+  otlp.insecure: "true"
+  # Open-Telemetry collector 標頭：（例如 "key1=value1,key2=value2"）
+  otlp.headers: ""
+  # Open-Telemetry collector 屬性：（例如 "key1:value1,key2:value2"）
+  otlp.attrs: ""
+
+  # 應用程式可以創建和調解的額外命名空間列表。
+  # 安裝 Argo CD 的命名空間將始終被允許。
+  #
+  # 功能狀態：Beta
+  application.namespaces: ns1, ns2, ns3
+
+  # 設定日誌時間戳格式。預設為 "" 表示 "2006-01-02T15:04:05Z07:00" (RFC3339)。
+  # 請參閱 https://pkg.go.dev/time#pkg-constants 以獲取更多選項。
+  # 此選項用於所有組件。
+  log.format.timestamp: ""
+
+  ## Controller 屬性
+  # Repo server RPC 調用超時秒數。
+  controller.repo.server.timeout.seconds: "60"
+  # 禁用與 repo server 連接的 TLS
+  controller.repo.server.plaintext: "false"
+  # 是否對 repo server 提供的 TLS 證書使用嚴格驗證
+  controller.repo.server.strict.tls: "false"
+  # 應用程式狀態處理器數量（預設 20）
+  controller.status.processors: "20"
+  # 應用程式操作處理器數量（預設 10）
+  controller.operation.processors: "10"
+  # 設定日誌格式。選項：json|text（預設 "json"）
+  controller.log.format: "json"
+  # 設定日誌級別。選項：debug|info|warn|error（預設 "info"）
+  controller.log.level: "info"
+  # Prometheus 指標緩存過期（預設禁用。例如 24h0m0s）
+  controller.metrics.cache.expiration: "24h0m0s"
+  # 指定應用程式自癒嘗試之間的指數退避超時參數
+  controller.self.heal.timeout.seconds: "2"
+  controller.self.heal.backoff.factor: "3"
+  controller.self.heal.backoff.cap.seconds: "300"
+  # 為應用程式指定同步超時。"0" 表示無超時（預設 "0"）
+  controller.sync.timeout.seconds: "0"
+  # 指定每個同步波之間的延遲秒數，讓其他控制器有機會對規範更改做出反應。（預設 "2"）
+  controller.sync.wave.delay.seconds: "2"
+
+  # 應用程式狀態緩存過期（預設 1h0m0s）
+  controller.app.state.cache.expiration: "1h0m0s"
+  # 指定資源健康狀態是否應該保存在應用程式 CR 中（預設 false）。
+  # 將此設為 true 將在應用程式 CR 中存儲每個資源的健康狀態，
+  # 增加對 CR 的更新數量，並給應用程式控制器帶來更多負載
+  controller.resource.health.persist: "false"
+  # 緩存過期預設值（預設 24h0m0s）
+  controller.default.cache.expiration: "24h0m0s"
+  # 用於平衡應用程式控制器分片間集群的分片演算法（預設 "legacy"）
+  controller.sharding.algorithm: legacy
+  # 允許的並發 kubectl fork/exec 數量。小於 1 的任何值表示無限制。
+  controller.kubectl.parallelism.limit: "20"
+  # 每個請求的最大重試次數
+  controller.k8sclient.retry.max: "0"
+  # 第一次重試嘗試的初始退避延遲（毫秒）。後續重試將將此退避時間加倍，直至達到最大閾值
+  controller.k8sclient.retry.base.backoff: "100"
+  # 與 repo server 通信時忽略連續錯誤的寬限期秒數。
+  controller.repo.error.grace.period.seconds: "180"
+  # 在應用程式控制器級別啟用服務器端差異功能。
+  # 差異計算將通過運行服務器端應用乾運行來完成（當
+  # 差異緩存不可用時）。
+  controller.diff.server.side: "false"
+  # 在內部指標端口上啟用 profile 端點
+  controller.profile.enabled: "false"
+  # 在控制器的集群緩存中啟用批處理模式。這可以幫助改善具有高
+  # "變動" 的集群的性能，即大量資源修改。
+  controller.cluster.cache.batch.events.processing: "true"
+  # 這設定了控制器集群緩存處理一批集群事件的間隔。更低的值
+  # 將增加 Argo CD 意識到外部集群狀態的速度。更高的值將減少集群
+  # 緩存鎖爭用，並更好地處理高變動集群。
+  controller.cluster.cache.events.processing.interval: "100ms"
+
+  ## Server 屬性
+  # 在給定地址監聽傳入連接（預設 "0.0.0.0"）
+  server.listen.address: "0.0.0.0"
+  # 在給定地址監聽指標（預設 "0.0.0.0"）
+  server.metrics.listen.address: "0.0.0.0"
+  # 運行服務器而不使用 TLS
+  server.insecure: "false"
+  # index.html 中 base href 的值。用於 Argo CD 在與 / 不同的子路徑下運行於反向代理後面時（預設 "/"）
+  server.basehref: "/"
+  # 用於 Argo CD 在與 / 不同的子路徑下運行於反向代理後面時
+  server.rootpath: ""
+  # 包含額外靜態資產的目錄路徑
+  server.staticassets: "/shared/app"
+  # 每個請求的最大重試次數
+  server.k8sclient.retry.max: "0"
+  # 第一次重試嘗試的初始退避延遲（毫秒）。後續重試將將此退避時間加倍，直至達到最大閾值
+  server.k8sclient.retry.base.backoff: "100"
+  # 非 GET 請求上允許的內容類型分號分隔列表。設為空字符串以允許全部。要注意
+  # 允許 application/json 以外的內容類型可能會使您的 API 更容易受到 CSRF 攻擊。
+  server.api.content.types: "application/json"
+  # 並發處理的 webhook 請求數量（預設 50）
+  server.webhook.parallelism.limit: "50"
+  # 是否允許檢查了 replace 的同步通過。資源級別註釋覆蓋此設定，即它僅在 API 服務器級別強制執行。
+  server.sync.replace.allowed: "true"
+
+  # 設定日誌格式。選項：json|text（預設 "json"）
+  server.log.format: "json"
+  # 設定日誌級別。選項：debug|info|warn|error（預設 "info"）
+  server.log.level: "info"
+  # Repo server RPC 調用超時秒數。（預設 60）
+  server.repo.server.timeout.seconds: "60"
+  # 使用明文客戶端（非 TLS）連接到倉庫服務器
+  server.repo.server.plaintext: "false"
+  # 連接到 repo server 時執行 TLS 證書的嚴格驗證
+  server.repo.server.strict.tls: "false"
+  # Dex server 地址（預設 "http://argocd-dex-server:5556"）
+  server.dex.server: "http://argocd-dex-server:5556"
+  # 使用明文客戶端（非 TLS）連接到 dex server
+  server.dex.server.plaintext: "false"
+  # 連接到 dex server 時執行 TLS 證書的嚴格驗證
+  server.dex.server.strict.tls: "false"
+  # 禁用客戶端身份驗證
+  server.disable.auth: "false"
+  # 切換 GZIP 壓縮
+  server.enable.gzip: "true"
+  # 在 HTTP 響應中將 X-Frame-Options 標頭設為值。要禁用，請設為 ""。（預設 "sameorigin"）
+  server.x.frame.options: "sameorigin"
+  # 可接受的最低 SSL/TLS 版本（選項：1.0|1.1|1.2|1.3）（預設 "1.2"）
+  server.tls.minversion: "1.2"
+  # 可接受的最高 SSL/TLS 版本（選項：1.0|1.1|1.2|1.3）（預設 "1.3"）
+  server.tls.maxversion: "1.3"
+  # 建立 TLS 連接時要使用的可接受密碼列表。使用 'list' 列出可用密碼。（預設 "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"）
+  server.tls.ciphers: "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
+  # 集群/repo 連接狀態緩存過期（預設 1h0m0s）
+  server.connection.status.cache.expiration: "1h0m0s"
+  # OIDC 狀態緩存過期（預設 3m0s）
+  server.oidc.cache.expiration: "3m0s"
+  # 應用程式狀態緩存過期（預設 1h0m0s）
+  server.app.state.cache.expiration: "1h0m0s"
+  # 緩存過期預設值（預設 24h0m0s）
+  server.default.cache.expiration: "24h0m0s"
+  # 啟用實驗性的代理擴展功能
+  server.enable.proxy.extension: "false"
+  # 在內部指標端口上啟用 profile 端點
+  server.profile.enabled: "false"
+
+  ## Repo-server properties
+  # Listen on given address for incoming connections (default "0.0.0.0")
+  reposerver.listen.address: "0.0.0.0"
+  # Listen on given address for metrics (default "0.0.0.0")
+  reposerver.metrics.listen.address: "0.0.0.0"
+  # Set the logging format. One of: json|text (default "json")
+  reposerver.log.format: "json"
+  # Set the logging level. One of: debug|info|warn|error (default "info")
+  reposerver.log.level: "info"
+  # Limit on number of concurrent manifests generate requests. Any value less the 1 means no limit.
+  reposerver.parallelism.limit: "1"
+  # Disable TLS on the gRPC endpoint
+  reposerver.disable.tls: "false"
+  # The minimum SSL/TLS version that is acceptable (one of: 1.0|1.1|1.2|1.3) (default "1.2")
+  reposerver.tls.minversion: "1.2"
+  # The maximum SSL/TLS version that is acceptable (one of: 1.0|1.1|1.2|1.3) (default "1.3")
+  reposerver.tls.maxversion: "1.3"
+  # The list of acceptable ciphers to be used when establishing TLS connections. Use 'list' to list available ciphers. (default "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384")
+  reposerver.tls.ciphers: "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
+  # Cache expiration for repo state, incl. app lists, app details, manifest generation, revision meta-data (default 24h0m0s)
+  reposerver.repo.cache.expiration: "24h0m0s"
+  # Cache expiration default (default 24h0m0s)
+  reposerver.default.cache.expiration: "24h0m0s"
+  # Max combined manifest file size for a single directory-type Application. In-memory manifest representation may be as
+  # much as 300x the manifest file size. Limit this to stay within the memory limits of the repo-server while allowing
+  # for 300x memory expansion and N Applications running at the same time.
+  # (example 10M max * 300 expansion * 10 Apps = 30G max theoretical memory usage).
+  reposerver.max.combined.directory.manifests.size: "10M"
+  # Paths to be excluded from the tarball streamed to plugins. Separate with ;
+  reposerver.plugin.tar.exclusions: ""
+  # Enable the repo server to use the 'argocd.argoproj.io/manifest-generate-paths' annotation to guide manifest generation.
+  reposerver.plugin.use.manifest.generate.paths: "false"
+  # Allow repositories to contain symlinks that leave the boundaries of the repository.
+  # Changing this to "true" will not allow _all_ out-of-bounds symlinks. Those will still be blocked for things like values
+  # files in Helm charts. But symlinks which are not explicitly blocked by other checks will be allowed.
+  reposerver.allow.oob.symlinks: "false"
+  # Maximum size of tarball when streaming manifests to the repo server for generation
+  reposerver.streamed.manifest.max.tar.size: "100M"
+  # Maximum size of extracted manifests when streaming manifests to the repo server for generation
+  reposerver.streamed.manifest.max.extracted.size: "1G"
+  # Maximum size of extracted manifests when streaming manifests to the repo server for generation
+  reposerver.oci.manifest.max.extracted.size: "1G"
+  # Whether to disable manifest size check for OCI artifacts
+  reposerver.disable.oci.manifest.max.extracted.size: "false"
+  # The allowlist of the OCI media types which the repo-server will make use of. If an OCI media type for a given artifact is not in the given list, the repo-server will return an error.
+  reposerver.oci.layer.media.types: "application/vnd.oci.image.layer.v1.tar,application/vnd.oci.image.layer.v1.tar+gzip,application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+  # Enable git submodule support
+  reposerver.enable.git.submodule: "true"
+  # Number of concurrent git ls-remote requests. Any value less than 1 means no limit.
+  reposerver.git.lsremote.parallelism.limit: "0"
+  # Git requests timeout.
+  reposerver.git.request.timeout: "15s"
+  # Include hidden directories from Git
+  reposerver.include.hidden.directories: "false"
+
+  ## Commit-server properties
+  # Listen on given address for incoming connections (default "0.0.0.0")
+  commitserver.listen.address: "0.0.0.0"
+  # Set the logging format. One of: json|text (default "json")
+  commitserver.log.format: "json"
+  # Set the logging level. One of: debug|info|warn|error (default "info")
+  commitserver.log.level: "info"
+  # Listen on given address for metrics (default "0.0.0.0")
+  commitserver.metrics.listen.address: "0.0.0.0"
+
+  # Set the logging format. One of: json|text (default "json")
+  dexserver.log.format: "json"
+  # Set the logging level. One of: debug|info|warn|error (default "info")
+  dexserver.log.level: "info"
+  # Disable TLS on the HTTP endpoint
+  dexserver.disable.tls: "false"
+
+  ## ApplicationSet Controller 屬性
+  # 為控制器管理器啟用領導者選舉。啟用此功能將確保只有一個活動的控制器管理器。
+  applicationsetcontroller.enable.leader.election: "false"
+  # "修改生成器和集群之間應用程式的同步方式。預設為 ''（空），這意味著 AppSets
+  # 將預設為 'sync' 政策（創建 & 更新 & 刪除）。明確設定值會阻止 AppSet 級別
+  # 政策覆蓋，除非明確啟用覆蓋（請參閱下面的選項）。明確選項為：
+  # 'create-only', 'create-update'（無刪除）, 'create-delete'（無更新）"
+  applicationsetcontroller.policy: ""
+  # 如果 applicationsetcontroller.policy 為空，此標誌無效。如果 applicationsetcontroller.policy 已設定，
+  # 此標誌控制控制器中設定的政策是否可以被 ApplicationSet 資源覆蓋
+  # （即 spec.syncPlicy.applicationSync 欄位）。設為 "true" 以允許覆蓋。"" 或 "false" 將禁用
+  # 覆蓋。（預設 ""）
+  applicationsetcontroller.enable.policy.override: ""
+  # 控制器的最大並發調解限制（預設 10）
+  applicationsetcontroller.concurrent.reconciliations.max: "10"
+  # 在 Git 文件生成器中啟用新的通配符匹配（預設 "false"）
+  # 請參閱 https://argo-cd.readthedocs.io/en/stable/operator-manual/applicationset/Generators-Git-File-Globbing/
+  applicationsetcontroller.enable.new.git.file.globbing: "false"
+  # 列印除錯日誌。優先於日誌級別
+  applicationsetcontroller.debug: "false"
+  # 設定日誌格式。選項：json|text（預設 "json"）
+  applicationsetcontroller.log.format: "json"
+  # 設定日誌級別。選項：debug|info|warn|error（預設 "info"）
+  applicationsetcontroller.log.level: "info"
+  # 啟用乾運行模式
+  applicationsetcontroller.dryrun: "false"
+  # 啟用 git 子模組支援
+  applicationsetcontroller.enable.git.submodule: "true"
+  # 啟用漸進式同步功能的使用
+  applicationsetcontroller.enable.progressive.syncs: "false"
+  # 指定在哪裡查找 ApplicationSet 資源的通配符模式列表。（預設僅為安裝控制器的 ns）
+  applicationsetcontroller.namespaces: "argocd,argocd-appsets-*"
+  # SCM/PR Gitlab 生成器的自簽名 TLS 證書路徑
+  applicationsetcontroller.scm.root.ca.path: ""
+  # 允許的 SCM 提供者逗號分隔列表（預設 "" 為所有 SCM 提供者）。
+  # 使用 ApplicationSets-in-any-namespace 時需要設定此欄位，以防止使用者從
+  # `tokenRef` 將密鑰發送到不允許的 `api` 域。
+  # scm 生成器中使用的 url 必須完全匹配列表中的一個
+  applicationsetcontroller.allowed.scm.providers: "https://git.example.com/,https://gitlab.example.com/"
+  # 要完全禁用 SCM 提供者（即禁用 SCM 和 PR 生成器），請設為 "false"。預設為 "true"。
+  applicationsetcontroller.enable.scm.providers: "false"
+  # 並發處理的 webhook 請求數量（預設 50）
+  applicationsetcontroller.webhook.parallelism.limit: "50"
+  # 覆蓋控制器的預設重新排隊時間。（預設 3m）
+  applicationsetcontroller.requeue.after: "3m"
+  # 為 ApplicationSet 資源中的 tokenRef 啟用嚴格模式。啟用時，引用的密鑰必須具有標籤 `argocd.argoproj.io/secret-type` 且值為 `scm-creds`。
+  applicationsetcontroller.enable.tokenref.strict.mode: "false"
+  # 在生成的應用程式中保留的註釋逗號分隔列表
+  applicationsetcontroller.global.preserved.annotations: "acme.com/annotation1,acme.com/annotation2"
+  # 在生成的應用程式中保留的標籤逗號分隔列表
+  applicationsetcontroller.global.preserved.labels: "acme.com/label1,acme.com/label2"
+  # 為使用 GitHub API 的生成器啟用 GitHub API 指標
+  applicationsetcontroller.enable.github.api.metrics: "false"
+  # 存儲在 ApplicationSet 狀態中的最大資源數。這是一個安全措施，以防止狀態增長過大。
+  applicationsetcontroller.status.max.resources.count: "5000"
+
+  ## Argo CD Notifications Controller 屬性
+  # 設定日誌級別。選項：debug|info|warn|error（預設 "info"）
+  notificationscontroller.log.level: "info"
+  # 設定日誌格式。選項：json|text（預設 "json"）
+  notificationscontroller.log.format: "json"
+  # 啟用自助服務通知配置。與 apps-in-any-namespace 結合使用。（預設 "false"）
+  notificationscontroller.selfservice.enabled: "false"
+  # 禁用與 repo server 的連接上的 TLS
+  notificationscontroller.repo.server.plaintext: "false"

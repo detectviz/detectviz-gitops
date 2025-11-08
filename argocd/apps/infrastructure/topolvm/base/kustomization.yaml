@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+helmCharts:
+  - name: topolvm
+    repo: https://topolvm.github.io/topolvm
+    version: 12.1.0
+    releaseName: topolvm
+    namespace: kube-system
+    valuesFile: values.yaml
+
+resources:
+  - topolvm-storage-classes.yaml
+
+labels:
+  - pairs:
+      app.kubernetes.io/name: topolvm
+      app.kubernetes.io/part-of: detectviz-storage
+      app.kubernetes.io/managed-by: kustomize
+      app.kubernetes.io/component: storage
+
+commonAnnotations:
+  argocd.argoproj.io/sync-wave: "-2"

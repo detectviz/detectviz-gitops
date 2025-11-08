@@ -1,0 +1,104 @@
+# 專案規格
+# 以下描述了專案的所有可用欄位：
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: my-project
+  namespace: argocd
+  # 確保專案在未被任何應用程式引用之前不會被刪除的 finalizer
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  # 專案描述
+  description: Example Project
+
+  # 允許從任何 Git 倉庫部署清單
+  sourceRepos:
+    - "*"
+
+  # 僅允許應用程式部署到同一集群中的 'guestbook' 命名空間或以 'guestbook-' 開頭的任何命名空間
+  # 目的地集群可以通過 'server'、'name' 或兩者來識別。
+  destinations:
+    - namespace: guestbook
+      server: https://kubernetes.default.svc
+      name: in-cluster
+    # 目的地也允許通配符 globbing
+    - namespace: guestbook-*
+      server: https://kubernetes.default.svc
+      name: in-cluster
+
+  # 拒絕創建所有集群範圍的資源，除了 Namespace
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+
+  # 允許創建所有命名空間範圍的資源，除了 ResourceQuota、LimitRange、NetworkPolicy
+  namespaceResourceBlacklist:
+    - group: ""
+      kind: ResourceQuota
+    - group: ""
+      kind: LimitRange
+    - group: ""
+      kind: NetworkPolicy
+
+  # 拒絕創建所有命名空間範圍的資源，除了 Deployment 和 StatefulSet
+  namespaceResourceWhitelist:
+    - group: "apps"
+      kind: Deployment
+    - group: "apps"
+      kind: StatefulSet
+
+  # 啟用命名空間孤立資源監視。
+  orphanedResources:
+    warn: false
+
+  roles:
+    # 一個為專案中的所有應用程式提供唯讀存取的角色
+    - name: read-only
+      description: Read-only privileges to my-project
+      policies:
+        - p, proj:my-project:read-only, applications, get, my-project/*, allow
+      groups:
+        - my-oidc-group
+
+    # 一個僅為 guestbook-dev 應用程式提供同步權限的角色，例如為 CI 系統提供
+    # 同步權限
+    - name: ci-role
+      description: Sync privileges for guestbook-dev
+      policies:
+        - p, proj:my-project:ci-role, applications, sync, my-project/guestbook-dev, allow
+
+      # 注意：JWT 權杖只能由 API 服務器生成，並且不會被 Argo CD 保存在任何地方。
+      # 可以通過從此列表中移除條目來提前撤銷權杖。
+      jwtTokens:
+        - iat: 1535390316
+
+  # 同步窗口限制應用程式可以同步的時間。https://argo-cd.readthedocs.io/en/stable/user-guide/sync_windows/
+  syncWindows:
+    - kind: allow
+      schedule: "10 1 * * *"
+      duration: 1h
+      applications:
+        - "*-prod"
+      manualSync: true
+    - kind: deny
+      schedule: "0 22 * * *"
+      duration: 1h
+      namespaces:
+        - default
+    - kind: allow
+      schedule: "0 23 * * *"
+      duration: 1h
+      clusters:
+        - in-cluster
+        - cluster1
+
+  # 預設情況下，應用程式可以同步到 `destinations` 欄位下指定的任何集群，即使它們沒有
+  # 限定在此專案中。將以下欄位設為 `true` 以限制此集群中的應用程式僅同步到
+  # 此專案限定的集群。
+  permitOnlyProjectScopedClusters: false
+
+  # 使用 Applications-in-any-namespace 時，此欄位確定此 AppProject 允許
+  # 應用程式駐留在哪些命名空間中。詳細信息：https://argo-cd.readthedocs.io/en/stable/operator-manual/app-any-namespace/
+  sourceNamespaces:
+    - "argocd-apps-*"

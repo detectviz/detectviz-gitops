@@ -1,0 +1,62 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  labels:
+    app.kubernetes.io/name: argocd-cmd-params-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  # Repo server 地址
+  repo.server: "argocd-repo-server:8081"
+
+  # Redis server 配置
+  redis.server: "argocd-redis:6379"
+  redis.compression: gzip
+
+  # 應用程式命名空間 - 允許 ArgoCD 在 argocd, detectviz, monitoring, vault 命名空間中創建應用
+  application.namespaces: argocd,detectviz,monitoring,vault,external-secrets-system
+
+  ## Controller 屬性
+  # 狀態處理器數量
+  controller.status.processors: "20"
+  # 操作處理器數量
+  controller.operation.processors: "10"
+
+  # 應用狀態緩存過期
+  controller.app.state.cache.expiration: "1h0m0s"
+
+  # 資源健康持久化
+  controller.resource.health.persist: "false"
+
+  # K8s 客戶端重試設定
+  controller.k8sclient.retry.max: "0"
+  controller.k8sclient.retry.base.backoff: "100"
+
+  ## Server 屬性
+  # 監聽地址
+  server.listen.address: "0.0.0.0"
+
+  # 運行服務器時不使用 TLS (因為我們有 Ingress 處理 TLS)
+  server.insecure: "true"
+
+  # 靜態資源目錄
+  server.staticassets: "/shared/app"
+
+  # API 內容類型
+  server.api.content.types: "application/json"
+
+  # Webhook 並發限制
+  server.webhook.parallelism.limit: "50"
+
+  # 允許 sync with replace
+  server.sync.replace.allowed: "true"
+
+  ## Repo-server 屬性
+  # 並發限制
+  reposerver.parallelism.limit: "1"
+
+  # 最大清單檔案大小
+  reposerver.max.combined.directory.manifests.size: "10M"
+
+  # 啟用 Helm 支持
+  reposerver.helm.enabled: "true"

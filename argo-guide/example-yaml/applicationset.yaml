@@ -1,0 +1,336 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: test-hello-world-appset
+  namespace: argocd
+spec:
+  generators:
+    # 列表產生器產生一組兩個應用程式，然後透過鍵值進行過濾，只選擇 env 值為 staging 的環境
+    - list:
+        elements:
+          - cluster: engineering-dev
+            url: https://kubernetes.default.svc
+            env: staging
+          - cluster: engineering-prod
+            url: https://kubernetes.default.svc
+            env: prod
+        # 產生器的範本欄位優先於 spec 的範本欄位
+        template:
+          metadata: {}
+          spec:
+            project: "default"
+            source:
+              revision: HEAD
+              repoURL: https://github.com/argoproj/argo-cd.git
+              # 在這裡產生新的路徑值：
+              path: 'applicationset/examples/template-override/{{cluster}}-override'
+            destination: {}
+
+      # 選擇器允許對所有產生器進行後過濾。
+      selector:
+        matchLabels:
+          env: staging
+          
+    # 也可以使用 matchExpressions 進行更強大的選擇
+    - clusters: {}
+      selector:
+        matchExpressions:
+          - key: server
+            operator: In
+            values:
+              - https://kubernetes.default.svc
+              - https://some-other-cluster
+
+    # Git 產生器從 git repo 中的目錄結構或檔案產生參數
+    - git:
+        repoURL: https://github.com/argoproj/argo-cd.git
+        # 可選：使用 git repo 的目錄結構來產生參數
+        directories:
+        - path: applicationset/examples/git-generator-directory/excludes/cluster-addons/*
+        - path: applicationset/examples/git-generator-directory/excludes/cluster-addons/exclude-helm-guestbook
+          exclude: true # 產生參數時排除目錄
+        # 可選：使用在 git repo 中找到的 JSON/YAML 檔案的內容來產生參數
+        files:
+        - path: "applicationset/examples/git-generator-files-discovery/cluster-config/**/config.json"
+        - path: "applicationset/examples/git-generator-files-discovery/cluster-config/*/dev/config.json"
+          exclude: true # 產生參數時排除檔案
+        revision: HEAD
+        # 可選：每 60 秒檢查一次變更（預設 3 分鐘）
+        requeueAfterSeconds: 60
+        # 產生器的範本欄位優先於 spec 的範本欄位
+        template:
+        # 可選：所有與路徑相關的參數名稱都將以指定的值和點分隔符為前綴
+        pathParamPrefix: myRepo
+        # 可選：Values 包含直接作為參數傳遞給範本的鍵/值對
+        values:
+          cluster: '{{.path.basename}}'
+
+
+    # 自動發現在組織內的儲存庫
+    - scmProvider:
+        # 使用哪種協議進行克隆。
+        cloneProtocol: ssh
+        # GitHub 模式使用 GitHub API 來掃描 github.com 或 GitHub Enterprise 中的組織
+        github:
+          # 要掃描的 GitHub 組織。
+          organization: myorg
+          # 對於 GitHub Enterprise：
+          api: https://git.example.com/
+          # 如果為 true，則掃描每個儲存庫的每個分支。如果為 false，則僅掃描預設分支。預設為 false。
+          allBranches: true
+          # 引用包含存取權杖的 Secret。（可選）
+          tokenRef:
+            secretName: github-token
+            key: token
+          # （可選）使用 GitHub App 來存取 API，而不是 PAT。
+          appSecretName: gh-app-repo-creds
+          #透過 values 欄位傳遞額外的鍵值對
+          values:
+            name: "{{organization}}-{{repository}}"
+
+        #GitLab 模式使用 GitLab API 來掃描 gitlab.com 或自託管 GitLab 中的組織。
+        gitlab:
+        #Gitea 模式使用 Gitea API 來掃描您實例中的組織
+        gitea:
+        #使用 Bitbucket Server API (1.0) 來掃描專案中的 repo。
+        bitbucketServer:
+        #使用 Azure DevOps API 來查詢符合條件的儲存庫
+        azureDevOps:
+        # Bitbucket 模式使用 Bitbucket API V2 來掃描 bitbucket.org 中的工作區
+        bitbucket:
+        #使用 AWS ResourceGroupsTagging 和 AWS CodeCommit API 來掃描跨 AWS 帳戶和區域的 repo
+        awsCodeCommit:
+
+        #過濾器允許選擇要為哪些儲存庫產生。
+        filters:
+        # 包括任何以 "myapp" 開頭且包含 Kustomize 設定並標記為 "deploy-ok" 的儲存庫...
+        - repositoryMatch: ^myapp
+          pathsExist: [kubernetes/kustomization.yaml]
+          labelMatch: deploy-ok
+        # ... 或包括任何以 "otherapp" 開頭且具有 Helm 資料夾且沒有檔案 disabledrepo.txt 的儲存庫。
+        - repositoryMatch: ^otherapp
+          pathsExist: [helm]
+          pathsDoNotExist: [disabledrepo.txt]
+
+    # 基於叢集決策資源的 ApplicationSet 產生器
+    - clusterDecisionResource:
+      # 包含 duck type 資源的 GVK 資訊的 ConfigMap
+      configMapRef: my-configmap
+      name: quak           # 選擇資源的 "name" 或 "labelSelector"
+      labelSelector:
+        matchLabels:       # 可選
+          duck: spotted
+        matchExpressions:  # 可選
+        - key: duck
+          operator: In
+          values:
+          - "spotted"
+          - "canvasback"
+      # 可選：每 60 秒檢查一次變更（預設 3 分鐘）
+      requeueAfterSeconds: 60
+  
+    # Pull Request 產生器使用 SCMaaS 提供者的 API 來自動發現在儲存庫中開啟的 pull request
+    - pullRequest:
+        # 使用 Pull Request 產生器時，ApplicationSet 控制器會每隔 `requeueAfterSeconds` 間隔（預設為每 30 分鐘）輪詢一次以偵測變更。
+        requeueAfterSeconds: 1800
+        # 設定為 true 時，即使找不到儲存庫，ApplicationSet 控制器仍會繼續產生應用程式，並且不會進入失敗狀態。
+        # 一個使用案例是在矩陣產生器中將 pull request 產生器與 Git 產生器結合使用。
+        # 注意，如果儲存庫存在但由於存取權限而無法存取，
+        # SCM 提供者通常會回傳「404 Not Found」錯誤，
+        # 而不是「403 Permission Denied」錯誤。因此，使用此
+        # 選項可能會導致在與權杖關聯的 SCM
+        # 使用者失去對儲存庫的存取權限時刪除 Argo CD 應用程式。
+
+        continueOnRepoNotFoundError: false
+        # 有關特定於提供者的選項，請參閱下文。
+        # 指定要從中取得 GitHub Pull request 的儲存庫。
+        github:
+          # GitHub 組織或使用者。
+          owner: myorg
+          # Github 儲存庫
+          repo: myrepository
+          # 對於 GitHub Enterprise（可選）
+          api: https://git.example.com/
+          # 引用包含存取權杖的 Secret。（可選）
+          tokenRef:
+            secretName: github-token
+            key: token
+          # （可選）使用 GitHub App 來存取 API，而不是 PAT。
+          appSecretName: github-app-repo-creds
+          # Labels 用於過濾您要鎖定的 PR。（可選）
+          labels:
+          - preview
+
+        # 過濾器允許選擇要為哪些 pull request 產生
+        # 包括任何以 "argocd" 結尾的 pull request 分支
+        # 和以 "feat:" 開頭的 pull request 標題。（可選）
+        filters:
+        - branchMatch: ".*-argocd"
+        - titleMatch: "^feat:"
+
+        # 指定要從中取得 GitLab merge request 的專案。
+        gitlab:
+        # 指定要從中取得 Gitea Pull request 的儲存庫。
+        gitea:
+        # 從託管在 Bitbucket Server（與 Bitbucket Cloud 不同）上的 repo 取得 pull request。
+        bitbucketServer:
+        # 從託管在 Bitbucket Cloud 上的 repo 取得 pull request。
+        bitbucket:
+        # 指定您要從中取得 pull request 的組織、專案和儲存庫。
+        azuredevops:
+        # 從 AWS CodeCommit 儲存庫取得 pull request。
+        awsCodeCommit:
+   
+    # matrix 'parent' 產生器
+    - matrix:
+        generators:
+        # 任何頂層產生器都可以在這裡使用。
+  
+    # merge 'parent' 產生器
+    # 使用由兩個子產生器設定的選擇器來組合它們。
+    - merge:
+        mergeKeys:
+          - server
+          # 請注意，這在啟用 goTemplate 的情況下將無法運作，
+          # 不支援巢狀的合併鍵。
+          - values.selector
+        generators:
+          - clusters:
+              values:
+                kafka: 'true'
+                redis: 'false'
+          # 對於具有特定標籤的叢集，啟用 Kafka。
+          - clusters:
+              selector:
+                matchLabels:
+                  use-kafka: 'false'
+              values:
+                kafka: 'false'
+          # 對於特定叢集，啟用 Redis。
+          - list:
+              elements: 
+                - server: https://2.4.6.8
+                  values.redis: 'true'
+
+    # 使用產生器外掛程式而不將其與 Matrix 或 Merge 結合
+    # 外掛程式允許您提供自己的產生器
+    - plugin:
+      # 指定外掛程式設定所在的 configMap。
+      configMapRef:
+        name: my-plugin
+      # 您可以將任意參數傳遞給外掛程式。`input.parameters` 是一個 map，但值可以是任何類型。
+      # 這些參數也將在產生器的 `generator.input.parameters` 鍵下可用。
+      input:
+        parameters:
+          key1: "value1"
+          key2: "value2"
+          list: ["list", "of", "values"]
+          boolean: true
+          map:
+            key1: "value1"
+            key2: "value2"
+            key3: "value3"
+        # 您也可以在 `values` 鍵下將任意值附加到產生器的輸出中。這些值將在範本中的 `values` 鍵下可用。
+        values:
+          value1: something
+        # 使用外掛程式產生器時，ApplicationSet 控制器會每隔 `requeueAfterSeconds` 間隔（預設為每 30 分鐘）輪詢一次以偵測變更。
+        requeueAfterSeconds: 30
+                
+              
+  # 決定是否在下面的 `template` 欄位中使用 go 範本。
+  goTemplate: true
+  # 可選的 go 範本選項列表，請參閱 https://pkg.go.dev/text/template#Template.Option
+  # 這僅在 `goTemplate` 為 true 時才相關
+  goTemplateOptions: ["missingkey=error"]
+
+  # 這些欄位與 Application spec 相同。
+  # 產生器的範本欄位優先於 spec 的範本欄位
+  template:
+    metadata:
+      name: test-hello-world-app
+    spec:
+      project: my-project
+      syncPolicy: 
+        automated:
+          selfHeal: true    
+        syncOptions:
+        - CreateNamespace=true  
+      # 定義從哪個 Git 儲存庫中提取所需的應用程式清單
+      source:
+        - chart: '{{.chart}}'
+        # 開發人員可以使用來自上述 repo URL 的 JSON 檔案來自訂應用程式詳細資訊
+          repoURL: https://github.com/argoproj/argo-cd.git
+          targetRevision: HEAD
+          # 儲存庫中 Kubernetes 清單所在的路徑
+          path: applicationset/examples/list-generator/guestbook/{{cluster}}
+          helm:
+            useCredentials: "{{.useCredentials}}"  # 此欄位不能被範本化，因為它是一個布林值欄位
+          parameters:
+          - name: "image.tag"
+            value: "pull-{{head_sha}}"
+          - name: "{{.name}}"
+            value: "{{.value}}"
+          - name: throw-away
+            value: "{{end}}"
+      destination:
+        # 只能指定 name 或 server 其中之一：如果兩者都指定，則會回傳錯誤。
+        #  要部署到的叢集名稱（在 Argo CD 中）
+        name: production-cluster # 叢集受限
+        #  叢集的 API 伺服器 URL
+        server: '{{.url}}'
+        # 要在其中部署來源清單的目標命名空間
+        namespace: dev-team-one # 命名空間受限
+
+  # 此同步策略適用於 ApplicationSet，而不適用於它建立的應用程式。
+  syncPolicy:
+    # 防止 ApplicationSet 控制器修改或刪除應用程式
+    applicationsSync: create-only
+
+    # 防止 ApplicationSet 控制器刪除應用程式。允許更新
+    # applicationsSync: create-update
+
+    # 防止 ApplicationSet 控制器修改應用程式。允許刪除。
+    # applicationsSync: create-delete
+
+    # 在父應用程式被刪除時，防止刪除應用程式的子資源
+    preserveResourcesOnDeletion: true
+
+  strategy:
+     # RollingSync 更新策略允許您根據產生的 Application 資源上的標籤對應用程式進行分組
+     # 請參閱「漸進式同步」的文件
+     type: RollingSync
+     rollingSync:
+      steps:
+        # 應用程式群組是使用其標籤和 matchExpressions 來選擇的
+        - matchExpressions:
+            - key: envLabel
+              operator: In
+              values:
+                - env-dev
+        # maxUpdate: 100%  # 如果未定義，則所有匹配的應用程式將一起更新（預設為 100%）
+        - matchExpressions:
+            - key: envLabel
+              operator: In
+              values:
+                - env-qa
+          maxUpdate: 0      # 如果為 0，則除非手動同步，否則不會同步任何匹配的應用程式
+        - matchExpressions:
+            - key: envLabel
+              operator: In
+              values:
+                - env-prod
+          maxUpdate: 10%    # maxUpdate 支援整數和百分比字串值（向下取整，但對於 >0% 的情況下，下限為 1 個應用程式）
+
+  # 定義此 ApplicationSet 將忽略的應用程式的註解和標籤
+  # ignoreApplicationDifferences 現在是完成此項的首選方式。
+  preservedFields:
+    annotations: [ some-annotation-key ]
+    labels: [ some-label-key ]
+
+  # 定義在比較應用程式時應忽略的欄位
+  ignoreApplicationDifferences:
+  - jsonPointers:
+    - /spec/source/targetRevision
+  - name: some-app
+    jqPathExpressions:
+    - .spec.source.helm.values

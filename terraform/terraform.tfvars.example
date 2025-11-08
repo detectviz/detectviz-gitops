@@ -1,0 +1,156 @@
+# Detectviz Platform - Terraform 變數配置範例
+# 用途：提供配置模板，複製此檔案為 terraform.tfvars 並填入實際值
+# 使用方式：cp terraform.tfvars.example terraform.tfvars
+
+# ============================================
+# Proxmox 連接配置
+# ============================================
+proxmox_api_url      = "https://192.168.0.2:8006/api2/json"
+proxmox_tls_insecure = true
+
+# Proxmox API Token 配置
+# 生成方式請參考 docs/proxmox-setup.md#建立-terraform-專用角色api-token
+proxmox_api_token_id     = "terraform-prov@pve!terraform-token"
+proxmox_api_token_secret = "your-actual-token-secret-here"
+
+# ============================================
+# Proxmox 節點與儲存配置
+# ============================================
+
+# Proxmox 節點名稱 pvesh get /nodes --output-format json | jq -r '.[].node'
+proxmox_target_node = "proxmox"
+
+# 儲存池名稱 pvesh get /nodes/<NODE>/storage --output-format json | jq -r '.[].storage'
+proxmox_storage = "nvme-vm"
+
+# 網路橋接器 pvesh get /nodes/<NODE>/network --output-format json | jq -r '.[] | select(.type=="bridge") | .iface'
+proxmox_bridge = "vmbr0"
+
+# ============================================
+# VM 模板配置
+# ============================================
+# 需先建立此模板，可用 `pvesh get /nodes/<NODE>/qemu --output-format json | jq -r '.[] | select(.template==1) | .name` 驗證
+vm_template_name = "ubuntu-2204-template"
+vm_user          = "ubuntu" # VM 預設使用者
+
+# ============================================
+# SSH 金鑰配置
+# ============================================
+# 方式 1：自動讀取本地公鑰
+ssh_public_key = "" # 留空自動讀取預設值
+
+# 方式 2：直接貼上公鑰內容
+# ssh_public_key = <<-EOT
+# ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC... your-ssh-public-key-here
+# EOT
+
+# 私鑰路徑（位於工作站，用於自工作站登入 Cloud-init 建立的 VM 與 Provisioner 操作）
+ssh_private_key_path = "~/.ssh/id_rsa" # 留空自動讀取預設值
+
+# ============================================
+# Master 節點配置（3 台，對應 deployment.md）
+# ============================================
+master_cores     = 3
+master_memory    = 8192 # 8 GB
+master_disk_size = "100G"
+
+master_ips = [
+  "192.168.0.11", # vm-1
+  "192.168.0.12", # vm-2
+  "192.168.0.13", # vm-3
+]
+
+master_hostnames = [
+  "master-1",
+  "master-2",
+  "master-3",
+]
+
+# ============================================
+# Worker 節點配置（2 台，對應 deployment.md）
+# ============================================
+worker_cores = [
+  6, # vm-4 (app)
+  7, # vm-5 (ai)
+]
+worker_memory = 16384 # 16 GB
+
+worker_system_disk_sizes = [
+  "120G", # vm-4 系統磁碟
+  "120G", # vm-5 系統磁碟
+]
+
+worker_data_disks = [
+  {
+    size    = "200G" # vm-4 資料磁碟
+    storage = "nvme-vm"
+  },
+  {
+    size    = "400G" # vm-5 資料磁碟
+    storage = "nvme-vm"
+  }
+]
+
+worker_ips = [
+  "192.168.0.14", # vm-4 (Grafana Web, PostgreSQL, ChromaDB)
+  "192.168.0.15", # vm-5 (Ollama, LLM Plugin)
+]
+
+worker_hostnames = [
+  "app", # 對應 app.detectviz.internal
+  "ai",  # 對應 ai.detectviz.internal
+]
+
+# ============================================
+# 網路配置
+# ============================================
+domain     = "detectviz.internal"
+gateway    = "192.168.0.1"
+nameserver = "8.8.8.8"
+vlan_id    = -1 # -1 表示不使用 VLAN
+
+# ============================================
+# Kubernetes 配置（對應 deployment.md）
+# ============================================
+kubernetes_version = "1.32.0"
+pod_network_cidr   = "10.244.0.0/16"
+service_cidr       = "10.96.0.0/12"
+control_plane_vip  = "192.168.0.10" # HAProxy/Keepalived VIP
+
+# ============================================
+# 環境標籤
+# ============================================
+environment     = "prod"
+project         = "detectviz"
+cluster_name    = "detectviz-prod" # 與 monitoring/kube-prometheus-stack externalLabels.cluster 一致
+proxmox_host_id = "proxmox"        # 供節點標籤與監控使用，請以 `pvesh get /nodes` 查得的實際節點 ID 填入
+
+# ============================================
+# 配置說明與檢查清單
+# ============================================
+# 完成前置作業檢查：
+# - [ ] Proxmox API Token 已生成並填入上方（格式：terraform-prov@pve!terraform-token）
+# - [ ] Ubuntu 22.04 Cloud Image 模板已建立（VM ID 9000，名稱：ubuntu-2204-template）
+# - [ ] SSH 公鑰已正確配置（自動讀取 ~/.ssh/id_rsa.pub）
+# - [ ] 網路配置（IP、Gateway、DNS）已確認
+# - [ ] 儲存空間足夠（Master: 3×100GB, Worker: 2×120GB + 2×200GB/400GB = 總計 1.04TB）
+# - [ ] CPU 與記憶體資源足夠（總計 22 核心、56 GB RAM，預留 Hypervisor 使用）
+
+# ============================================
+# 網路規劃參考（對應 deployment.md）
+# ============================================
+# 192.168.0.10  - Control Plane VIP (HAProxy)
+# 192.168.0.11  - master-1 (vm-1) - Prometheus Operator, Alertmanager
+# 192.168.0.12  - master-2 (vm-2) - Mimir Distributor/Ingester
+# 192.168.0.13  - master-3 (vm-3) - Loki Distributor/Querier
+# 192.168.0.14  - worker-1 (vm-4) - Grafana Web, PostgreSQL, ChromaDB
+
+# Pod CIDR:     10.244.0.0/16
+# Service CIDR: 10.96.0.0/12
+
+# ============================================
+# 執行指令
+# ============================================
+# terraform init
+# terraform plan -var-file=terraform.tfvars
+# terraform apply -var-file=terraform.tfvars

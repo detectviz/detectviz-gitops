@@ -1,0 +1,38 @@
+# Terraform State 管理策略: 選項 A - Git 版本控制
+# 詳見: README-STATE-MANAGEMENT.md
+
+# ✅ State 檔案納入 Git 版本控制 (本專案策略)
+!terraform.tfstate
+!terraform.tfstate.backup
+
+# ❌ 排除敏感變數檔案 (永不進 Git)
+*.tfvars
+*.auto.tfvars
+*.tfvars.json
+!terraform.tfvars.example
+.terraform.tfstate.lock.info
+
+# Terraform 工作目錄
+.terraform/
+.terraform.lock.hcl
+
+# 備份文件
+*.backup
+
+# Crash log files
+crash.log
+crash.*.log
+
+# Override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# CLI configuration files
+.terraformrc
+terraform.rc
+
+# OS
+.DS_Store
+Thumbs.db

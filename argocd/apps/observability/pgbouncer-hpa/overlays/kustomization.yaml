@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# 基礎設施級別的額外資源
+# 包含跨應用的 HPA、NetworkPolicy 等配置
+
+resources:
+  - pgbouncer-hpa.yaml
+
+# 補充標籤
+commonLabels:
+  environment: production
+  managed-by: gitops
+
+# 補充 annotations
+commonAnnotations:
+  environment: production
+  cluster: detectviz-production
+  argocd.argoproj.io/sync-wave: "-1"

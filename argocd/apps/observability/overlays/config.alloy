@@ -1,0 +1,266 @@
+// Alloy 生產環境配置 (Production Overlay)
+// 本文件定義了 Grafana Alloy 在生產環境中的特定配置。
+// 它會完全覆寫 (replace) 'base' 中的 'config.alloy'，以確保生產環境配置的獨立性與明確性。
+//
+// 參考文件:
+// - Alloy 官方文檔: https://grafana.com/docs/alloy/latest/
+// - 本平台指南: gitops-argocd/guide/alloy.md
+
+// River 語言不支持 locals 區塊。
+// 生產環境的配置值通過 DaemonSet 的環境變數注入：
+// - CLUSTER_NAME="detectviz-production"
+// - LOKI_TENANT="production"
+// - NODE_SELECTOR=".*" (所有節點)
+
+// 'logging' 區塊的設定與 'base' 相同。
+logging {
+  level  = "info"
+  format = "logfmt"
+}
+
+// --- Kubernetes Pods 日誌收集管線 ---
+// 以下的 'discovery.kubernetes', 'discovery.relabel', 'loki.source.kubernetes'
+// 與 'loki.process' 的大部分設定都與 'base' 相同，因為核心的日誌處理邏輯在所有環境中都是一致的。
+// 主要的區別在於，生產環境的日誌在最後會被附加上 'environment: production' 的靜態標籤。
+
+discovery.kubernetes "pods" {
+  role = "pod"
+}
+
+discovery.relabel "pod_logs" {
+  targets = discovery.kubernetes.pods.targets
+  // ... relabel 規則與 base 相同 ...
+  rule {
+    source_labels = ["__meta_kubernetes_pod_node_name"]
+    action        = "keep"
+    regex         = coalesce(env("NODE_SELECTOR"), ".*")
+  }
+
+  rule {
+    source_labels = ["__meta_kubernetes_namespace"]
+    action        = "replace"
+    target_label  = "namespace"
+  }
+
+  rule {
+    source_labels = ["__meta_kubernetes_pod_container_name"]
+    action        = "replace"
+    target_label  = "container"
+  }
+
+  rule {
+    source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+    action        = "replace"
+    target_label  = "app_kubernetes_io_name"
+    regex         = "(.+)"
+  }
+
+  rule {
+    source_labels = ["__meta_kubernetes_pod_label_app"]
+    action        = "replace"
+    target_label  = "app"
+    regex         = "(.+)"
+  }
+
+  rule {
+    source_labels = ["__meta_kubernetes_namespace", "__meta_kubernetes_pod_container_name"]
+    action        = "replace"
+    target_label  = "job"
+    separator     = "/"
+    replacement   = "$1"
+  }
+
+  rule {
+    source_labels = ["__meta_kubernetes_pod_node_name"]
+    action        = "replace"
+    target_label  = "node"
+  }
+
+  rule {
+    source_labels = ["__meta_kubernetes_pod_name"]
+    action        = "replace"
+    target_label  = "pod_name"
+  }
+
+  rule {
+    source_labels = ["__meta_kubernetes_pod_uid"]
+    action        = "replace"
+    target_label  = "pod_uid"
+  }
+
+  rule {
+    source_labels = ["__meta_kubernetes_pod_host_ip"]
+    action        = "replace"
+    target_label  = "pod_host_ip"
+  }
+
+  rule {
+    action = "labeldrop"
+    regex  = "__meta_kubernetes_pod_label_(pod_template_hash|pod_template_generation|controller_revision_hash)"
+  }
+
+  rule {
+    action = "labeldrop"
+    regex  = "__meta_kubernetes_pod_labelpresent_.+"
+  }
+
+  rule {
+    action = "labeldrop"
+    regex  = "__meta_kubernetes_pod_annotation_(kubectl_kubernetes_io|kubernetes_io/config|checksum_).+"
+  }
+
+  rule {
+    action = "labeldrop"
+    regex  = "__meta_kubernetes_pod_annotationpresent_.+"
+  }
+}
+
+loki.source.kubernetes "pod_logs" {
+  targets    = discovery.relabel.pod_logs.output
+  forward_to = [loki.process.pod_logs.receiver]
+}
+
+loki.process "pod_logs" {
+  // ... 處理階段與 base 相同 ...
+  stage.json {
+    expressions = {
+      level         = "level",
+      severity      = "severity",
+      severity_text = "severity_text",
+    }
+    drop_malformed = false
+  }
+
+  stage.template {
+    source   = "log_level"
+    template = "{{ if .level }}{{ lower .level }}{{ else if .severity }}{{ lower .severity }}{{ else if .severity_text }}{{ lower .severity_text }}{{ end }}"
+  }
+
+  stage.labels {
+    values = {
+      level = "log_level",
+    }
+  }
+
+  stage.template {
+    source   = "k8s_pod_name"
+    template = "{{ .Label \"pod_name\" }}"
+  }
+
+  stage.template {
+    source   = "k8s_pod_uid"
+    template = "{{ .Label \"pod_uid\" }}"
+  }
+
+  stage.template {
+    source   = "k8s_pod_host_ip"
+    template = "{{ .Label \"pod_host_ip\" }}"
+  }
+
+  stage.template {
+    source   = "k8s_namespace_name"
+    template = "{{ .Label \"namespace\" }}"
+  }
+
+  stage.template {
+    source   = "k8s_node_name"
+    template = "{{ .Label \"node\" }}"
+  }
+
+  stage.template {
+    source   = "k8s_container_name"
+    template = "{{ .Label \"container\" }}"
+  }
+
+  stage.structured_metadata {
+    values = {
+      k8s_pod_name        = "k8s_pod_name",
+      k8s_pod_uid         = "k8s_pod_uid",
+      k8s_pod_host_ip     = "k8s_pod_host_ip",
+      k8s_namespace_name  = "k8s_namespace_name",
+      k8s_node_name       = "k8s_node_name",
+      k8s_container_name  = "k8s_container_name",
+      k8s_cluster_name    = coalesce(env("CLUSTER_NAME"), "detectviz-production"),
+    }
+  }
+
+  stage.label_drop {
+    values = [
+      "pod",
+      "pod_name",
+      "pod_uid",
+      "pod_host_ip",
+    ]
+  }
+
+  // **生產環境的差異點**
+  // 在最後的 'static_labels' 階段，我們額外添加了 'environment: production' 標籤。
+  // 這個標籤對於在 Grafana 中區分和過濾生產環境的日誌至關重要。
+  stage.static_labels {
+    values = {
+      cluster     = coalesce(env("CLUSTER_NAME"), "detectviz-production"),
+      environment = "production",
+    }
+  }
+
+  forward_to = [loki.write.default.receiver]
+}
+
+
+// --- Systemd Journal 日誌收集 ---
+// Journal 日誌的收集邏輯與 base 相同，但同樣會被附加上 'environment: production' 標籤。
+
+loki.source.journal "system" {
+  forward_to = [loki.process.journal.receiver]
+  labels = {
+    job       = "systemd-journal",
+    component = "node",
+    cluster   = coalesce(env("CLUSTER_NAME"), "detectviz-production"),
+    environment = "production", // **生產環境的差異點**
+  }
+  path = "/var/log/journal"
+}
+
+loki.process "journal" {
+  // ... 處理階段與 base 相同 ...
+  stage.timestamp {
+    source = "_SOURCE_REALTIME_TIMESTAMP"
+    format = "Unix"
+  }
+
+  stage.labels {
+    values = {
+      unit     = "{{ ._SYSTEMD_UNIT }}",
+      priority = "{{ .PRIORITY }}",
+    }
+  }
+
+  stage.template {
+    source   = "journal_hostname"
+    template = "{{ ._HOSTNAME }}"
+  }
+
+  stage.structured_metadata {
+    values = {
+      host_hostname = "journal_hostname",
+    }
+  }
+  // **生產環境的差異點**
+  stage.static_labels {
+    values = {
+      cluster     = coalesce(env("CLUSTER_NAME"), "detectviz-production"),
+      environment = "production",
+    }
+  }
+
+  forward_to = [loki.write.default.receiver]
+}
+
+
+// 'loki.write' 的設定與 'base' 完全相同。
+loki.write "default" {
+  endpoint {
+    url       = "http://loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push"
+    tenant_id = coalesce(env("LOKI_TENANT"), "production")
+  }
+}

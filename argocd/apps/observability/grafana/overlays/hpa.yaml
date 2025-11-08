@@ -1,0 +1,65 @@
+# Grafana Horizontal Pod Autoscaler
+# 用途：實現 Grafana Web 層的自動水平擴縮
+# 管理方式：GitOps (ArgoCD 自動同步)
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: grafana-hpa
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/instance: grafana
+    app.kubernetes.io/component: frontend
+    app.kubernetes.io/part-of: detectviz-platform
+    app.kubernetes.io/managed-by: argocd
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: grafana
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    # CPU 使用率指標
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    # 記憶體使用率指標
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+    # 自訂指標：並發使用者數（需配置 Prometheus Adapter）
+    - type: Pods
+      pods:
+        metric:
+          name: grafana_http_request_duration_seconds_count
+        target:
+          type: AverageValue
+          averageValue: "100" # 每個 Pod 平均處理 100 RPS
+
+  # 擴縮行為配置
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60 # 穩定視窗：60 秒內持續滿足條件才擴展
+      policies:
+        - type: Percent
+          value: 100 # 每次最多增加 100% 副本數（翻倍）
+          periodSeconds: 30
+        - type: Pods
+          value: 2 # 或每次最多增加 2 個 Pod（取較小值）
+          periodSeconds: 30
+      selectPolicy: Max # 選擇較激進的策略
+    scaleDown:
+      stabilizationWindowSeconds: 300 # 穩定視窗：5 分鐘內持續滿足條件才縮減
+      policies:
+        - type: Pods
+          value: 1 # 每次最多減少 1 個 Pod
+          periodSeconds: 60
+      selectPolicy: Min # 選擇較保守的策略

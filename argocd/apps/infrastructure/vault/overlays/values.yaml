@@ -1,0 +1,140 @@
+# HashiCorp Vault Base Configuration
+# 密鑰管理系統 - 基礎配置
+
+global:
+  enabled: true
+  tlsDisable: true # 由 環境覆寫 覆寫以啟用 TLS
+
+# Server 配置
+server:
+  replicas: 3
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+
+  # 高可用配置
+  ha:
+    enabled: true
+    replicas: 3
+    raft:
+      enabled: true
+      setNodeId: true
+      config: |
+        ui = true
+
+        storage "raft" {
+          path = "/vault/data"
+
+          retry_join {
+            leader_api_addr = "http://vault-0.vault-internal:8200"
+          }
+          retry_join {
+            leader_api_addr = "http://vault-1.vault-internal:8200"
+          }
+          retry_join {
+            leader_api_addr = "http://vault-2.vault-internal:8200"
+          }
+        }
+
+        listener "tcp" {
+          address = "[::]:8200"
+          cluster_address = "[::]:8201"
+          tls_disable = true
+        }
+
+        api_addr = "http://$(POD_IP):8200"
+        cluster_addr = "http://$(POD_IP):8201"
+
+        service_registration "kubernetes" {}
+
+  # Pod Security Context (符合 restricted Pod Security Standard)
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 100
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+
+  # Container Security Context
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+    readOnlyRootFilesystem: true
+    seccompProfile:
+      type: RuntimeDefault
+
+  # 數據持久化
+  dataStorage:
+    enabled: true
+    size: 10Gi
+    storageClass: detectviz-data
+    accessMode: ReadWriteOnce
+
+  # 稽核日誌持久化
+  auditStorage:
+    enabled: true
+    size: 5Gi
+    storageClass: detectviz-data
+    accessMode: ReadWriteOnce
+
+# UI 配置
+ui:
+  enabled: true
+  service:
+    type: ClusterIP
+    port: 8200
+
+# 可觀測性 - 預設關閉 ServiceMonitor，待 Prometheus Operator 就緒後再啟用
+serverTelemetry:
+  prometheusOperator: false
+  serviceMonitor:
+    enabled: false
+
+# Injector 配置 (用於 Sidecar 注入)
+injector:
+  enabled: true
+  replicas: 2 # HA 雙副本
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+  # 安全上下文配置 (符合 restricted Pod Security Standard)
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 100
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+
+  # Container 安全上下文
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+    readOnlyRootFilesystem: true
+    seccompProfile:
+      type: RuntimeDefault
+
+  # Pod 反親和性
+  affinity: |
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: vault-agent-injector
+            topologyKey: kubernetes.io/hostname

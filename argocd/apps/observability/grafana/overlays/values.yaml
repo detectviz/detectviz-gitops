@@ -1,0 +1,370 @@
+# Grafana Configuration (Base Defaults + Production Overrides)
+# 檔案前半段保留原共用設定，後半段追加 production 環境覆寫。
+
+# 副本數 (可由環境覆寫)
+replicas: 1
+
+# 部署策略
+deploymentStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 0
+    maxSurge: 1
+
+# 資源限制 (基礎配置，production 環境覆寫 會提高)
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# 服務配置
+service:
+  enabled: true
+  type: ClusterIP  # 環境覆寫 可改為 LoadBalancer
+  port: 80
+  targetPort: 3000
+  annotations: {}
+
+# 持久化 (預設關閉，由 環境覆寫 啟用)
+persistence:
+  enabled: false
+
+# 管理員帳號 (由 Secret 提供)
+admin:
+  existingSecret: ""  # 環境覆寫 指定
+  userKey: admin-user
+  passwordKey: admin-password
+
+# 資料庫配置 (預設 SQLite，production 使用 PostgreSQL)
+database:
+  type: sqlite3
+
+# 環境變數 (環境覆寫 覆寫)
+env: {}
+
+# 資料來源 (環境覆寫 定義)
+datasources: {}
+
+# 儀表板提供者
+dashboardProviders: {}
+
+# 儀表板 ConfigMap
+dashboards: {}
+
+# ServiceMonitor (Prometheus Operator)
+serviceMonitor:
+  enabled: true
+  namespace: monitoring
+  interval: 30s
+  scrapeTimeout: 10s
+  labels:
+    app.kubernetes.io/part-of: detectviz-monitoring
+    prometheus: kube-prometheus-stack
+  relabelings:
+    - sourceLabels: [__meta_kubernetes_pod_name]
+      targetLabel: pod
+    - sourceLabels: [__meta_kubernetes_pod_node_name]
+      targetLabel: node
+    - targetLabel: app_kubernetes_io_component
+      replacement: visualization
+    - targetLabel: app_kubernetes_io_part_of
+      replacement: detectviz-monitoring
+
+# Pod Disruption Budget
+podDisruptionBudget:
+  minAvailable: 0  # 環境覆寫 調整為 1 (HA 環境)
+
+# Security Context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 472
+  fsGroup: 472
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false
+
+# Affinity (環境覆寫 定義節點親和性)
+affinity: {}
+
+# Tolerations
+tolerations: []
+
+# Node Selector
+nodeSelector: {}
+
+# Grafana 核心配置
+grafana.ini:
+  server:
+    protocol: http
+    http_port: 3000
+    enable_gzip: true
+
+  analytics:
+    reporting_enabled: false
+    check_for_updates: false
+
+  security:
+    admin_user: admin
+    cookie_secure: false  # production 使用 TLS 時改為 true
+    cookie_samesite: lax
+
+  users:
+    allow_sign_up: false
+    allow_org_create: false
+    auto_assign_org: true
+    auto_assign_org_role: Viewer
+
+  auth:
+    disable_login_form: false
+
+  auth.anonymous:
+    enabled: false
+
+  log:
+    mode: console
+    level: info
+
+  paths:
+    data: /var/lib/grafana/data
+    logs: /var/log/grafana
+    plugins: /var/lib/grafana/plugins
+    provisioning: /etc/grafana/provisioning
+# --- Production Overrides ---
+# Grafana 生產環境配置 (Production Environment Overrides)
+#
+# 本文件為 Grafana 在生產環境的 Helm Chart Values，旨在實現一個高可用、可觀測且與平台深度整合的統一監控前端。
+# 它覆寫了 'base' 中的預設配置。
+#
+# 參考文件:
+# - 本平台指南: gitops-argocd/guide/grafana.md
+# - Helm Chart 官方文檔: https://github.com/grafana/helm-charts/tree/main/charts/grafana
+
+# --- 高可用性 (High Availability) ---
+# **[關鍵]** 設定為 2 個副本，以確保 Grafana 服務的高可用性。
+# 參考: guide/grafana.md#1.1-部署與架構
+replicas: 2
+
+# --- 資源配置 (Resource Allocation) ---
+# 為生產環境的 Grafana Pod 設定了更充裕的資源，以應對高負載查詢。
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+# --- 持久化儲存 (Persistence) ---
+# **[關鍵]** 啟用持久化儲存，用於儲存 Grafana 的內部資料庫 (如 SQLite)、插件數據等。
+# 雖然我們使用外部 PostgreSQL，但啟用 PVC 仍是最佳實踐。
+persistence:
+  enabled: true
+  type: pvc
+  storageClassName: detectviz-nvme # 使用 NVMe SSD 以獲得更好的性能。
+  accessModes:
+    - ReadWriteOnce
+  size: 10Gi
+  annotations:
+    argocd.argoproj.io/sync-wave: "0" # 確保 PVC 在 Grafana Pod 部署前被優先創建。
+
+# --- 管理員帳號 ---
+# **[關鍵]** 從名為 'grafana-admin' 的 Kubernetes Secret 中讀取管理員的使用者名稱與密碼。
+# 這種做法避免了將敏感憑證硬編碼在 Git 儲存庫中。
+# 參考: guide/grafana.md#1.5-安全與管理
+admin:
+  existingSecret: grafana-admin
+  userKey: admin-user
+  passwordKey: admin-password
+
+# --- 後端資料庫 (Backend Database) ---
+# **[關鍵]** 設定 Grafana 使用外部 PostgreSQL 資料庫，這是實現 HA 的必要條件。
+# 所有儀表板、使用者、資料來源等核心狀態都將儲存在 PostgreSQL 中。
+# 參考: guide/grafana.md#1.1-部署與架構
+database:
+  type: postgres
+  host: postgresql-pgpool.detectviz.svc.cluster.local:5432 # 指向 PostgreSQL 的高可用連線池 (Pgpool)。
+  name: grafana
+  user: grafana
+  existingSecret: grafana-database # 從 Secret 中讀取資料庫密碼。
+  secretKey: GF_DATABASE_PASSWORD
+  sslMode: disable
+
+# --- 環境變數 (Environment Variables) ---
+env:
+  # 將 Pod 的 IP, Name, Namespace 等資訊注入為環境變數，供後續配置使用。
+  - name: POD_IP
+    valueFrom:
+      fieldRef:
+        fieldPath: status.podIP
+  # ... 其他 Pod 資訊 ...
+  - name: POD_NAME
+    valueFrom:
+      fieldRef:
+        fieldPath: metadata.name
+  - name: POD_NAMESPACE
+    valueFrom:
+      fieldRef:
+        fieldPath: metadata.namespace
+  # **[關鍵]** 設定 Grafana 的域名與根 URL，這對於生成正確的告警通知連結至關重要。
+  - name: GF_SERVER_DOMAIN
+    value: grafana.detectviz.local # 應替換為實際的外部域名。
+  - name: GF_SERVER_ROOT_URL
+    value: "%(protocol)s://%(domain)s/"
+
+  # 禁用 Grafana 的匿名分析報告。
+  - name: GF_ANALYTICS_REPORTING_ENABLED
+    value: "false"
+  - name: GF_ANALYTICS_CHECK_FOR_UPDATES
+    value: "false"
+
+  # **[關鍵]** 啟用並配置 Unified Alerting 的高可用 (HA) 模式。
+  # Grafana 實例之間將透過 Gossip 協議同步告警狀態，避免重複發送告警。
+  # 參考: guide/grafana.md#1.1-部署與架構
+  - name: GF_ALERTING_ENABLED
+    value: "true"
+  - name: GF_ALERTING_EXECUTE_ALERTS
+    value: "true"
+  - name: GF_UNIFIED_ALERTING_HA_LISTEN_ADDRESS
+    value: "$(POD_IP):9094"
+  - name: GF_UNIFIED_ALERTING_HA_ADVERTISE_ADDRESS
+    value: "$(POD_IP):9094"
+  - name: GF_UNIFIED_ALERTING_HA_PEERS
+    value: "grafana-alerting.monitoring.svc.cluster.local:9094" # 指向用於 Gossip 的 Headless Service。
+
+# 從 Secret 'grafana-database' 中注入所有鍵值對作為環境變數 (例如 GF_DATABASE_USER, GF_DATABASE_NAME)。
+envFromSecrets:
+  - name: grafana-database
+
+# --- 資料來源 (Data Sources) ---
+# **[關鍵]** 透過 sidecar 自動化配置核心資料來源，實現可觀測性即程式碼。
+# 參考: guide/grafana.md#1.2-資料來源
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: Mimir
+        type: prometheus
+        access: proxy
+        url: http://mimir-query-frontend.monitoring.svc.cluster.local:8080/prometheus
+        isDefault: true # 將 Mimir 設為預設的指標資料來源。
+        editable: false
+        jsonData:
+          httpMethod: POST
+          manageAlerts: true # 允許 Grafana Unified Alerting 管理此資料來源的告警。
+          prometheusType: mimir
+          timeInterval: 30s
+          queryTimeout: 300s
+        version: 1
+
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://loki-gateway.monitoring.svc.cluster.local:80
+        editable: false
+        jsonData:
+          maxLines: 1000
+          timeout: 60
+        version: 1
+
+      - name: Alertmanager
+        type: alertmanager
+        access: proxy
+        url: http://prometheus-alertmanager.monitoring.svc.cluster.local:9093
+        editable: false
+        jsonData:
+          implementation: prometheus
+          handleGrafanaManagedAlerts: true # 允許 Grafana 將告警路由到此 Alertmanager。
+        version: 1
+
+# --- ServiceMonitor ---
+# 啟用 ServiceMonitor，讓 Prometheus Operator 可以自動發現並抓取 Grafana 自身的指標。
+serviceMonitor:
+  enabled: true
+  namespace: monitoring
+  interval: 30s
+  scrapeTimeout: 10s
+  labels:
+    app.kubernetes.io/part-of: detectviz-monitoring
+    prometheus: kube-prometheus-stack # 確保被正確的 Prometheus 實例選中。
+    environment: production
+  relabelings:
+    # ... relabeling 規則 ...
+    - sourceLabels: [__meta_kubernetes_pod_name]
+      targetLabel: pod
+    - sourceLabels: [__meta_kubernetes_pod_node_name]
+      targetLabel: node
+    - targetLabel: app_kubernetes_io_component
+      replacement: visualization
+    - targetLabel: app_kubernetes_io_part_of
+      replacement: detectviz-monitoring
+    - targetLabel: environment
+      replacement: production
+# --- Pod Disruption Budget (PDB) ---
+# 在節點維護等自願性中斷事件中，確保至少有 1 個 Grafana Pod 可用。
+podDisruptionBudget:
+  minAvailable: 1
+
+# --- 調度策略 (Scheduling) ---
+affinity:
+  # **[關鍵]** 節點親和性，要求 Grafana Pod 被調度到帶有 'node-role.kubernetes.io/worker=app' 標籤的節點上。
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: In
+              values:
+                - app
+  # **[關鍵]** Pod 反親和性，盡量將兩個 Grafana Pod 分散到不同的物理節點上，以提高可用性。
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - grafana
+          topologyKey: kubernetes.io/hostname
+
+# --- 額外 Kubernetes 物件 ---
+# **[關鍵]** 創建一個 Headless Service，供 Grafana Unified Alerting 的 HA Gossip 協議使用。
+# 這個 Service 會解析到所有 Grafana Pod 的 IP 地址。
+# 參考: guide/grafana.md#2.1-儀表板管理
+extraObjects:
+  - |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: grafana-alerting
+      namespace: monitoring
+      labels:
+        app.kubernetes.io/name: grafana-alerting
+        app.kubernetes.io/instance: grafana
+        app.kubernetes.io/part-of: detectviz-monitoring
+        environment: production
+    spec:
+      type: ClusterIP
+      clusterIP: None  # 標示為 Headless Service
+      selector:
+        app.kubernetes.io/name: grafana
+        app.kubernetes.io/instance: grafana
+      ports:
+        - name: gossip-tcp
+          port: 9094
+          targetPort: 9094
+          protocol: TCP
+        - name: gossip-udp
+          port: 9094
+          targetPort: 9094
+          protocol: UDP

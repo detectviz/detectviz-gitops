@@ -1,0 +1,285 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform-bootstrap
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10" # 先於 root app 建立 Project
+spec:
+  description: |
+    Bootstrap Project - 僅允許 root Argo CD Application 管理 ApplicationSets 與 AppProjects。
+    參考 Argo CD 官方建議，將 Root App 與業務應用隔離於獨立 Project，避免使用 default 專案。
+  sourceRepos:
+    - https://github.com/detectviz/detectviz-gitops.git
+    - git@github.com:detectviz/detectviz-gitops.git
+  destinations:
+    - namespace: argocd
+      server: https://kubernetes.default.svc
+    - namespace: cert-manager
+      server: https://kubernetes.default.svc
+    - namespace: metallb-system
+      server: https://kubernetes.default.svc
+    - namespace: external-secrets-system
+      server: https://kubernetes.default.svc
+    - namespace: vault
+      server: https://kubernetes.default.svc
+    - namespace: kube-system
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: argoproj.io
+      kind: AppProject
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+  namespaceResourceWhitelist:
+    - group: argoproj.io
+      kind: Application
+    - group: argoproj.io
+      kind: ApplicationSet
+    - group: ""
+      kind: Namespace
+    - group: ""
+      kind: ConfigMap
+    - group: ""
+      kind: Secret
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: ServiceAccount
+    - group: apps
+      kind: Deployment
+    - group: apps
+      kind: StatefulSet
+    - group: apps
+      kind: DaemonSet
+    - group: batch
+      kind: Job
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+    - group: rbac.authorization.k8s.io
+      kind: Role
+    - group: rbac.authorization.k8s.io
+      kind: RoleBinding
+    - group: metallb.io
+      kind: IPAddressPool
+    - group: metallb.io
+      kind: L2Advertisement
+
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: detectviz
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: |
+    Detectviz Platform AppProject - 統一管理監控、平台與 AI 服務的部署範圍與權限控制。
+
+    限制策略:
+    - sourceRepos: 允許 detectviz/detectviz-gitops + 外部 Helm 倉庫 (版本由 CI 校驗)
+    - destinations: 僅允許部署至 monitoring, detectviz, vault, external-secrets-system 命名空間
+    - clusterResourceWhitelist: 僅允許必要的集群級別資源
+    - namespaceResourceWhitelist: 明確列舉允許的資源類型 (最小權限原則)
+
+    變更記錄:
+    - 2025-10-27: 強化 namespaceResourceWhitelist (從 group:*/kind:* 改為明確列舉)
+    - 2025-10-27: 添加 CI 版本校驗機制 (保持外部 Helm 倉庫)
+
+  sourceRepos:
+    # GitOps 倉庫
+    - "https://github.com/detectviz/detectviz-gitops"
+    - "https://github.com/detectviz/detectviz-gitops.git"
+    - "git@github.com:detectviz/detectviz-gitops.git"
+    - "https://github.com/detectviz/detectviz-apps"
+    - "https://github.com/detectviz/detectviz-apps.git"
+    - "git@github.com:detectviz/detectviz-apps.git"
+
+    # 外部 Helm 倉庫 (版本由 CI 校驗)
+    # 版本鎖定: helm-charts/CHARTS.lock
+    # CI 校驗: .github/workflows/helm-verify.yml
+
+    # Monitoring Stack
+    - "https://grafana.github.io/helm-charts"
+    - "https://prometheus-community.github.io/helm-charts"
+
+    # Logging Stack
+    - "https://grafana.github.io/helm-charts"
+
+    # Platform Services
+    - "https://charts.bitnami.com/bitnami"
+    - "https://helm.releases.hashicorp.com"
+    - "https://charts.external-secrets.io"
+
+    # AI Services
+    - "https://otwld.github.io/ollama-helm/"
+    - "https://amikos-tech.github.io/chromadb-chart/"
+
+  destinations:
+    # 監控命名空間
+    - namespace: monitoring
+      server: https://kubernetes.default.svc
+
+    # 平台服務命名空間
+    - namespace: detectviz
+      server: https://kubernetes.default.svc
+
+    # 密鑰管理命名空間
+    - namespace: vault
+      server: https://kubernetes.default.svc
+
+    # 外部密鑰管理命名空間
+    - namespace: external-secrets-system
+      server: https://kubernetes.default.svc
+
+    # 基礎設施命名空間
+    - namespace: cert-manager
+      server: https://kubernetes.default.svc
+    - namespace: metallb-system
+      server: https://kubernetes.default.svc
+
+    # Kubernetes 系統命名空間 (用於 TopoLVM)
+    - namespace: kube-system
+      server: https://kubernetes.default.svc
+
+    # ArgoCD 自身命名空間 (用於 ApplicationSets)
+    - namespace: argocd
+      server: https://kubernetes.default.svc
+
+  # 允許的集群級別資源 (Cluster-scoped resources)
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+    - group: storage.k8s.io
+      kind: StorageClass
+    - group: networking.k8s.io
+      kind: NetworkPolicy
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+
+  # 允許的命名空間級別資源 (最小權限原則)
+  # 2025-10-27: 從 group:*/kind:* 改為明確列舉資源類型
+  namespaceResourceWhitelist:
+    # 核心資源
+    - group: ""
+      kind: ConfigMap
+    - group: ""
+      kind: Secret
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: ServiceAccount
+    - group: ""
+      kind: PersistentVolumeClaim
+    - group: ""
+      kind: Pod # 用於 Job/CronJob
+
+    # 工作負載資源
+    - group: apps
+      kind: Deployment
+    - group: apps
+      kind: StatefulSet
+    - group: apps
+      kind: DaemonSet
+    - group: apps
+      kind: ReplicaSet
+    - group: batch
+      kind: Job
+    - group: batch
+      kind: CronJob
+
+    # 網路資源
+    - group: networking.k8s.io
+      kind: Ingress
+    - group: networking.k8s.io
+      kind: NetworkPolicy
+
+    # 自動擴展資源
+    - group: autoscaling
+      kind: HorizontalPodAutoscaler
+
+    # 監控資源 (Prometheus Operator)
+    - group: monitoring.coreos.com
+      kind: ServiceMonitor
+    - group: monitoring.coreos.com
+      kind: PodMonitor
+    - group: monitoring.coreos.com
+      kind: PrometheusRule
+    - group: monitoring.coreos.com
+      kind: Prometheus
+    - group: monitoring.coreos.com
+      kind: Alertmanager
+
+    # RBAC 資源
+    - group: rbac.authorization.k8s.io
+      kind: Role
+    - group: rbac.authorization.k8s.io
+      kind: RoleBinding
+    - group: metallb.io
+      kind: IPAddressPool
+    - group: metallb.io
+      kind: L2Advertisement
+
+    # 策略資源
+    - group: policy
+      kind: PodDisruptionBudget
+
+    # Vault 資源
+    - group: vault.hashicorp.com
+      kind: VaultAuth
+    - group: vault.hashicorp.com
+      kind: VaultConnection
+    - group: vault.hashicorp.com
+      kind: VaultStaticSecret
+
+    # External Secrets Operator 資源
+    - group: external-secrets.io
+      kind: SecretStore
+    - group: external-secrets.io
+      kind: ClusterSecretStore
+    - group: external-secrets.io
+      kind: ExternalSecret
+
+    # MetalLB 資源
+    - group: metallb.io
+      kind: IPAddressPool
+    - group: metallb.io
+      kind: L2Advertisement
+
+  # 同步策略
+  syncWindows:
+    - kind: allow
+      schedule: "* * * * *" # 永遠允許同步
+      duration: 1h
+      applications:
+        - "*"
+
+  # 孤兒資源策略 (Orphaned Resources)
+  orphanedResources:
+    warn: true # 警告但不刪除孤兒資源 (由人工確認)
+
+
+  # 簽名驗證 (未來啟用)
+  # signatureKeys:
+  #   - keyID: <GPG_KEY_ID>

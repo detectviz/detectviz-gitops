@@ -1,0 +1,90 @@
+# `argocd app wait` 命令參考
+
+## argocd app wait
+
+等待應用程式達到同步且健康的狀態
+
+```
+argocd app wait [APPNAME.. | -l selector] [flags]
+```
+
+### 範例
+
+```
+  # 等待一個應用程式
+  argocd app wait my-app
+
+  # 等待多個應用程式
+  argocd app wait my-app other-app
+
+  # 按資源等待應用程式
+  # 資源格式應為 GROUP:KIND:NAME。如果未指定 GROUP，則為 :KIND:NAME。
+  argocd app wait my-app --resource :Service:my-service
+  argocd app wait my-app --resource argoproj.io:Rollout:my-rollout
+  argocd app wait my-app --resource '!apps:Deployment:my-service'
+  argocd app wait my-app --resource apps:Deployment:my-service --resource :Service:my-service
+  argocd app wait my-app --resource '!*:Service:*'
+  # 如果應用程式在不同命名空間中有同名資源，請指定命名空間
+  argocd app wait my-app --resource argoproj.io:Rollout:my-namespace/my-rollout
+
+  # 按標籤等待應用程式，在此範例中，我們等待屬於另一個應用程式的子應用程式 (又稱應用程式的應用程式)
+  argocd app wait -l app.kubernetes.io/instance=my-app
+  argocd app wait -l app.kubernetes.io/instance!=my-app
+  argocd app wait -l app.kubernetes.io/instance
+  argocd app wait -l '!app.kubernetes.io/instance'
+  argocd app wait -l 'app.kubernetes.io/instance notin (my-app,other-app)'
+```
+
+### 選項
+
+```
+  -N, --app-namespace 字串   僅等待命名空間中的應用程式
+      --degraded               等待降級
+      --delete                 等待刪除
+      --health                 等待健康
+  -h, --help                   wait 的說明
+      --hydrated               等待 hydrate 操作
+      --operation              等待擱置操作
+  -o, --output 字串          輸出格式。可選：json|yaml|wide|tree|tree=detailed (預設為 "wide")
+      --resource 字串陣列   僅同步特定資源，格式為 GROUP:KIND:NAME 或 !GROUP:KIND:NAME。欄位可為空，且可使用 '*'。此選項可重複指定
+  -l, --selector 字串        按標籤等待應用程式。支援 '=', '==', '!=', in, notin, exists & not exists。相符的應用程式必須滿足所有指定的標籤限制。
+      --suspended              等待暫停
+      --sync                   等待同步
+      --timeout uint           在此秒數後逾時
+```
+
+### 從父指令繼承的選項
+
+```
+      --argocd-context 字串           要使用的 Argo-CD 伺服器上下文名稱
+      --auth-token 字串               驗證權杖；設定此選項或 ARGOCD_AUTH_TOKEN 環境變數
+      --client-crt 字串               用戶端憑證檔案
+      --client-crt-key 字串           用戶端憑證金鑰檔案
+      --config 字串                   Argo CD 設定檔的路徑 (預設為 "/home/user/.config/argocd/config")
+      --controller-name 字串          Argo CD 應用程式控制器的名稱；當控制器的名稱標籤與預設值不同時，設定此選項或 ARGOCD_APPLICATION_CONTROLLER_NAME 環境變數，例如透過 Helm 圖表安裝時 (預設為 "argocd-application-controller")
+      --core                            如果設定為 true, 則 CLI 會直接與 Kubernetes 通訊, 而非與 Argo CD API 伺服器通訊
+      --grpc-web                        啟用 gRPC-web 協定。如果 Argo CD 伺服器位於不支援 HTTP2 的代理之後, 此選項很有用。
+      --grpc-web-root-path 字串       啟用 gRPC-web 協定。如果 Argo CD 伺服器位於不支援 HTTP2 的代理之後, 此選項很有用。設定 Web 根目錄。
+  -H, --header 字串陣列                  為 Argo CD CLI 發出的所有請求設定額外的標頭。(可以重複多次以新增多個標頭, 也支援以逗號分隔的標頭)
+      --http-retry-max 整數              與 Argo CD 伺服器建立 http 連線的最大重試次數
+      --insecure                        略過伺服器憑證和網域驗證
+      --kube-context 字串             將指令導向至給定的 kube-context
+      --logformat 字串                  設定記錄格式。可選：json|text (預設為 "json")
+      --loglevel 字串                 設定記錄層級。可選：debug|info|warn|error (預設為 "info")
+      --plaintext                       停用 TLS
+      --port-forward                    使用連接埠轉送連線至隨機的 argocd-server 連接埠
+      --port-forward-namespace 字串   應用於連接埠轉送的命名空間名稱
+      --prompts-enabled                 強制啟用或停用可選的互動式提示, 覆寫本機組態。如果未指定, 將使用本機組態值, 預設為 false。
+      --redis-compress 字串           如果應用程式控制器已啟用 redis 壓縮, 請啟用此選項。(可能的值：gzip, none) (預設為 "gzip")
+      --redis-haproxy-name 字串       Redis HA Proxy 的名稱；當 HA Proxy 的名稱標籤與預設值不同時, 設定此選項或 ARGOCD_REDIS_HAPROXY_NAME 環境變數, 例如透過 Helm 圖表安裝時 (預設為 "argocd-redis-ha-haproxy")
+      --redis-name 字串               Redis 部署的名稱；當 Redis 的名稱標籤與預設值不同時, 設定此選項或 ARGOCD_REDIS_NAME 環境變數, 例如透過 Helm 圖表安裝時 (預設為 "argocd-redis")
+      --repo-server-name 字串         Argo CD Repo 伺服器的名稱；當伺服器的名稱標籤與預設值不同時, 設定此選項或 ARGOCD_REPO_SERVER_NAME 環境變數, 例如透過 Helm 圖表安裝時 (預設為 "argocd-repo-server")
+      --server 字串                   Argo CD 伺服器位址
+      --server-crt 字串               伺服器憑證檔案
+      --server-name 字串              Argo CD API 伺服器的名稱；當伺服器的名稱標籤與預設值不同時，設定此選項或 ARGOCD_SERVER_NAME 環境變數，例如透過 Helm 圖表安裝時 (預設為 "argocd-server")
+```
+
+### 另請參閱
+
+* [argocd app](argocd_app.md)	 - 管理應用程式
+

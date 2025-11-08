@@ -1,0 +1,15 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: argocd-redis-ha-server
+
+spec:
+  replicas: 1
+  template:
+    spec:
+      affinity:
+        podAntiAffinity: {} # 移除所有 anti-affinity 規則以適配單節點集群
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule

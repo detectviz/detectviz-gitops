@@ -1,0 +1,28 @@
+---
+# ArgoCD TLS Certificate Management
+# 通過 cert-manager 自動生成 TLS 證書
+# 使用自簽名 ClusterIssuer 適用於開發/測試環境
+
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-issuer
+  labels:
+    app.kubernetes.io/part-of: argocd
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: argocd-server-tls
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: argocd
+spec:
+  secretName: argocd-server-tls
+  issuerRef:
+    name: selfsigned-issuer
+    kind: ClusterIssuer
+  dnsNames:
+    - argocd.detectviz.local

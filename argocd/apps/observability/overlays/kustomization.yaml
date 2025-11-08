@@ -1,0 +1,30 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+# 策略合併補丁：添加生產環境變數
+patchesStrategicMerge:
+  - daemonset-patch.yaml
+
+# ConfigMap 生成器 (覆寫)
+configMapGenerator:
+  - name: alloy-config
+    behavior: replace
+    files:
+      - config.alloy
+
+# 禁用 ConfigMap 名稱後綴雜湊
+generatorOptions:
+  disableNameSuffixHash: true
+
+labels:
+  - pairs:
+      environment: production
+    includeSelectors: true
+    includeTemplates: true
+
+commonAnnotations:
+  environment: production
+  cluster: detectviz-production

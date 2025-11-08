@@ -1,0 +1,51 @@
+# External Secrets Operator Production Configuration
+# 生產環境 - 高可用配置
+# 此文件僅包含生產環境特定的覆寫，基礎配置由 Helm chart 默認值提供
+
+# 高可用配置
+replicaCount: 2
+
+# 資源限制 (生產環境)
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+# Pod 反親和性 (確保分散在不同節點)
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - external-secrets
+          topologyKey: kubernetes.io/hostname
+
+# Webhook 高可用配置
+webhook:
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+# Cert Controller 高可用配置
+certController:
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi

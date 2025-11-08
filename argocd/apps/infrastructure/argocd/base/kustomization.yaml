@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  # 核心 ArgoCD HA 安裝
+  - argocd-ha-upstream.yaml
+
+  # 平台基礎設施 (namespace-level)
+  - resource-quotas.yaml
+  - network-policies.yaml
+
+  # 安全配置
+  - argocd-ingress.yaml
+
+  # 注意: cluster-level 資源已移至 bootstrap/cluster-resources/
+  # - namespaces.yaml (移至 bootstrap/cluster-resources/)
+  # - cluster-issuer.yaml (移至 bootstrap/cluster-resources/)
+  # - rollouts-extension.yaml (移至 bootstrap/cluster-resources/)
+  # - argocd-projects.yaml (移至 bootstrap/cluster-resources/)
+
+# 通用標籤
+labels:
+  - pairs:
+      app.kubernetes.io/managed-by: kustomize
+
+# 通用 annotations
+commonAnnotations:
+  argocd.argoproj.io/sync-wave: "-2" # 最先部署集群資源

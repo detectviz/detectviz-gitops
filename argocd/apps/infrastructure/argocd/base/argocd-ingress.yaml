@@ -1,0 +1,75 @@
+# ArgoCD Server Ingress Configuration
+# 管理方式：GitOps Bootstrap (手動 kubectl apply 或 ArgoCD App-of-Apps)
+# 部署時機：NGINX Ingress Controller 安裝後，ArgoCD 安裝前
+#
+# 基於官方 ingress.md 文檔的最佳實踐：
+# - 使用 cert-manager 自動 TLS 證書管理
+# - NGINX 處理 TLS，支援 ACME 挑戰
+# - 優化超時設定以支援大型 Git 倉庫同步
+# - 固定 LoadBalancer IP 以確保一致的外部訪問地址
+#
+# 注意：NGINX Ingress Controller 現在通過 Ansible 自動安裝，
+# LoadBalancer IP 已經固定為 192.168.0.10（由 MetalLB 管理）
+# 此文件只包含 ArgoCD 的 Ingress 配置
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-server
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-server
+    app.kubernetes.io/component: ingress
+    app.kubernetes.io/part-of: argocd
+  annotations:
+    # 後端協議設定 - cert-manager 需要 NGINX 處理 TLS
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+
+    # 安全性設定
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+
+    # 性能和超時優化 (支援大型 Git 倉庫同步)
+    nginx.ingress.kubernetes.io/proxy-body-size: "0" # 不限制請求大小
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600" # 1小時讀取超時
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600" # 1小時發送超時
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60" # 60秒連接超時
+
+    # gRPC 支援 (ArgoCD CLI 使用)
+    nginx.ingress.kubernetes.io/grpc-backend: "true"
+
+    # 其他優化
+    nginx.ingress.kubernetes.io/proxy-buffering: "off" # 禁用緩衝以支援串流
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+
+spec:
+  ingressClassName: nginx # 指定使用 NGINX Ingress Controller
+  rules:
+    - host: "argocd.detectviz.local" # ArgoCD 訪問域名 (根據實際環境修改)
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-server # 連向 ArgoCD Server Service
+                port:
+                  number: 80 # ArgoCD Server HTTP 端口 (NGINX 處理 TLS)
+
+  # TLS 設定選項 (根據環境選擇)
+  # 選項 1: 使用 cert-manager 自動簽發 (推薦生產環境) - 當前啟用
+  tls:
+    - hosts:
+        - "argocd.detectviz.local"
+      secretName: argocd-server-tls # cert-manager 自動建立
+
+
+  # 選項 2: 使用現有 TLS 證書
+  # 先建立 secret: kubectl create secret tls argocd-server-tls -n argocd --cert=... --key=...
+  #
+  # tls:
+  #   - hosts:
+  #       - 'argocd.detectviz.local'
+  #     secretName: argocd-server-tls
+
+  # 選項 3: 使用 ArgoCD 自帶證書 (開發環境)
+  # 取消註釋下方 ssl-passthrough 並註釋 tls 區塊
+  # nginx.ingress.kubernetes.io/ssl-passthrough: "true"

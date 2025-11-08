@@ -1,0 +1,181 @@
+---
+# ============================================
+# Common 角色任務 - 系統準備和依賴安裝
+# 此角色負責準備所有 Kubernetes 節點的基礎環境
+# ============================================
+
+# ============================================
+# 階段 1: 系統基礎設定
+# ============================================
+
+- name: 刷新 APT 套件快取並升級基礎套件
+  ansible.builtin.apt:
+    update_cache: yes # 更新套件緩存
+    upgrade: dist # 發行版升級
+    cache_valid_time: 3600 # 緩存有效時間（秒）
+
+- name: 安裝 Kubernetes 節點必要的基礎依賴套件
+  ansible.builtin.apt:
+    name:
+      - apt-transport-https # HTTPS 傳輸支援
+      - ca-certificates # CA 證書
+      - curl # HTTP 客戶端工具
+      - gnupg # GPG 加密工具
+      - lsb-release # Linux 標準基礎資訊工具
+      - software-properties-common # PPA 軟體源管理工具
+    state: present # 確保套件已安裝
+
+# ============================================
+# 階段 2: 禁用 Swap（Kubernetes 必要條件）
+# ============================================
+
+- name: 立即關閉所有 Swap 分區
+  ansible.builtin.command: swapoff -a
+  when: ansible_swaptotal_mb | int > 0
+  changed_when: ansible_swaptotal_mb | int > 0
+
+- name: 確保系統重啟後 Swap 保持禁用狀態
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^([^#].*\sswap\s+sw\s+.*)$'
+    replace: '# \1' # 註釋掉 swap 掛載項
+
+# ============================================
+# 階段 3: 設定容器運行時所需的核心模組
+# ============================================
+
+- name: 確保核心模組載入設定目錄存在
+  ansible.builtin.file:
+    path: /etc/modules-load.d
+    state: directory
+    mode: "0755"
+
+- name: 設定 containerd 所需的核心模組自動載入
+  ansible.builtin.blockinfile:
+    path: /etc/modules-load.d/containerd.conf
+    block: |
+      overlay      # OverlayFS 檔案系統支援
+      br_netfilter # 橋接網路過濾支援
+    create: yes
+
+- name: 立即載入必要的核心模組
+  ansible.builtin.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - overlay # 容器映像分層檔案系統
+    - br_netfilter # 網路橋接封包過濾
+
+# ============================================
+# 階段 4: 設定 Kubernetes 網路相關的 sysctl 參數
+# ============================================
+
+- name: 設定 Kubernetes CRI 所需的系統參數
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/99-kubernetes-cri.conf
+    content: |
+      net.bridge.bridge-nf-call-iptables  = 1  # 允許橋接流量通過 iptables
+      net.ipv4.ip_forward                 = 1  # 啟用 IPv4 封包轉發
+      net.bridge.bridge-nf-call-ip6tables = 1  # 允許橋接流量通過 ip6tables
+    mode: "0644"
+
+- name: 套用系統參數設定
+  ansible.builtin.command: sysctl --system
+  changed_when: false
+
+# ============================================
+# 階段 5: 安裝和設定 containerd 容器運行時
+# ============================================
+
+- name: 確保 APT 金鑰儲存目錄存在
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: 下載並安裝 Kubernetes 軟體源 GPG 金鑰
+  ansible.builtin.shell: |
+    curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.32/deb/Release.key | \
+    gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  args:
+    creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+- name: 新增 Kubernetes 官方軟體源
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.32/deb/ /"
+    state: present
+    filename: kubernetes
+    update_cache: no
+
+- name: 更新 APT 套件索引
+  ansible.builtin.apt:
+    update_cache: yes
+  when: ansible_distribution == 'Ubuntu'
+
+- name: 安裝 containerd 容器運行時
+  ansible.builtin.apt:
+    name: containerd
+    state: present
+
+- name: 產生 containerd 預設設定檔內容
+  ansible.builtin.command: containerd config default
+  register: containerd_default_config
+  changed_when: false
+
+- name: 確保 containerd 設定目錄存在
+  ansible.builtin.file:
+    path: /etc/containerd
+    state: directory
+    mode: "0755"
+
+- name: 寫入 containerd 基礎設定檔
+  ansible.builtin.copy:
+    dest: /etc/containerd/config.toml
+    content: "{{ containerd_default_config.stdout }}"
+    mode: "0644"
+  notify: Restart containerd
+
+- name: 啟用 containerd 的 SystemdCgroup 支援
+  ansible.builtin.replace:
+    path: /etc/containerd/config.toml
+    regexp: "SystemdCgroup = false"
+    replace: "SystemdCgroup = true"
+  notify: Restart containerd
+
+- name: 設定 containerd 的 pause 容器映像
+  ansible.builtin.replace:
+    path: /etc/containerd/config.toml
+    regexp: 'sandbox_image = "k8s.gcr.io/pause:3.6"'
+    replace: 'sandbox_image = "{{ containerd_sandbox_image }}"'
+  notify: Restart containerd
+
+- name: 確保 containerd 服務啟動並設為開機自啟
+  ansible.builtin.service:
+    name: containerd
+    state: started
+    enabled: yes
+
+# ============================================
+# 階段 6: 安裝 Kubernetes 核心元件
+# ============================================
+
+- name: 安裝 kubelet、kubeadm 和 kubectl
+  ansible.builtin.apt:
+    name: "{{ item if kubernetes_package_version | length == 0 else item ~ '=' ~ kubernetes_package_version }}"
+    state: present
+  loop:
+    - kubelet # Kubernetes 節點代理
+    - kubeadm # Kubernetes 集群引導工具
+    - kubectl # Kubernetes 命令列工具
+  register: install_kubernetes_components
+
+- name: 鎖定 Kubernetes 元件版本避免意外升級
+  ansible.builtin.command: "apt-mark hold kubelet kubeadm kubectl"
+  when: install_kubernetes_components is changed
+  changed_when: install_kubernetes_components is changed
+
+- name: 確保 kubelet 服務啟動並設為開機自啟
+  ansible.builtin.service:
+    name: kubelet
+    state: started
+    enabled: yes

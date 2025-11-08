@@ -1,0 +1,8 @@
+lvmd:
+  managed: true
+  socketName: /run/topolvm/lvmd.sock
+  securityContext:
+    privileged: true
+node:
+  securityContext:
+    privileged: true

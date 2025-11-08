@@ -1,0 +1,38 @@
+---
+# -----------------------------------------------------------
+# 任務：在 Ubuntu VM 範本內部執行 (Guest OS)
+# -----------------------------------------------------------
+
+- name: (PVE Host) 修正 KVM 橋接網路的 rp_filter
+  copy:
+    dest: /etc/sysctl.d/98-pve-networking.conf
+    content: |
+      # 修正 Proxmox KVM/Bridge/Tap 網路封包遺失 (ICMP Reply)
+      net.ipv4.conf.all.rp_filter = 1
+      net.ipv4.conf.default.rp_filter = 1
+  notify: reload pve sysctl
+
+- name: 安裝 qemu-guest-agent
+  apt:
+    name: qemu-guest-agent
+    state: present
+    update_cache: true
+
+- name: 啟用 qemu-guest-agent 服務
+  systemd:
+    name: qemu-guest-agent
+    enabled: true
+    state: started
+
+- name: 永久設定介面 MTU (以 eth0 為例)
+  copy:
+    dest: /etc/netplan/99-mtu-config.yaml
+    content: |
+      network:
+        version: 2
+        ethernets:
+          eth0: # FIXME: 請確保介面名稱 (eth0 或 ens18) 是正確的
+            match:
+              name: "eth0"
+            mtu: 1450 # 為了 overlay 網路 (例如 Calico/VXLAN)
+  notify: apply netplan

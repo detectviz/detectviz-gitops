@@ -1,0 +1,466 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  # Argo CD 對外暴露的基本 URL（可選）。配置 SSO 時需要
+  url: https://argo-cd-demo.argoproj.io
+
+  # 額外的對外暴露基本 URL（可選）
+  additionalUrls: |
+    - https://argo-cd-demo2.argoproj.io
+
+  # 啟用應用程式狀態徽章功能
+  statusbadge.enabled: "true"
+
+  # 覆蓋 Argo CD 主機名稱根 URL，用於專案和應用程式狀態徽章。
+  # 以下是應用程式 `myapp` 狀態徽章的範例，顯示被替換的內容。
+  #    <statusbadge.url>api/badge?name=myapp&revision=true
+  # 提供自定義 URL 進行覆蓋。必須包含結尾的正斜槓：
+  statusbadge.url: "https://cd-status.apps.argoproj.io/"
+
+  # 啟用匿名使用者存取。匿名使用者獲得 argocd-rbac-cm.yaml 中指定的預設角色權限。
+  users.anonymous.enabled: "true"
+  # 指定權杖過期持續時間
+  users.session.duration: "24h"
+
+  # 指定密碼的正則表達式
+  passwordPattern: "^.{8,32}$"
+
+  # 啟用 Google Analytics 追蹤（如果已指定）
+  ga.trackingid: "UA-12345-1"
+  # 除非設為 'false'，否則使用者 ID 在發送到 Google Analytics 之前會被雜湊
+  ga.anonymizeusers: "false"
+
+  # 用於獲取聊天幫助的 URL，這通常是您的 Slack 頻道支援
+  help.chatUrl: "https://mycorp.slack.com/argo-cd"
+  # 用於獲取聊天幫助的文字，預設為 "Chat now!"
+  help.chatText: "Chat now!"
+  # 下載額外 ArgoCD 二進位文件的 URL（除了預設包含的 Linux 當前平台二進位文件）
+  # 用於不同作業系統架構。如果提供，將在幫助頁面上顯示額外的下載按鈕。
+  help.download.linux-amd64: "path-or-url-to-download"
+  help.download.linux-arm64: "path-or-url-to-download"
+  help.download.linux-ppc64le: "path-or-url-to-download"
+  help.download.linux-s390x: "path-or-url-to-download"
+  help.download.darwin-amd64: "path-or-url-to-download"
+  help.download.darwin-arm64: "path-or-url-to-download"
+  help.download.windows-amd64: "path-or-url-to-download"
+
+  # Dex 連接器配置（可選）。請參閱 SSO 配置文檔：
+  # https://github.com/argoproj/argo-cd/blob/master/docs/operator-manual/user-management/index.md#sso
+  # https://dexidp.io/docs/connectors/
+  dex.config: |
+    connectors:
+      # GitHub 範例
+      - type: github
+        id: github
+        name: GitHub
+        config:
+          clientID: aabbccddeeff00112233
+          clientSecret: $dex.github.clientSecret
+          orgs:
+          - name: your-github-org
+            teams:
+            - red-team
+    # 如果您想在其他服務中重複使用，可以提供自定義靜態客戶端
+    # staticClients:
+    # - id: argo-workflow
+    #   name: Argo Workflow
+    #   redirectURIs:
+    #     - https://argo/oauth2/callback
+    #   secret: $secretReference
+
+  # OIDC 配置作為 dex 的替代方案（可選）。
+  oidc.config: |
+    name: Okta
+    issuer: https://dev-123456.oktapreview.com
+    clientID: aaaabbbbccccddddeee
+    clientSecret: $oidc.okta.clientSecret
+    # 可選的 OIDC 範圍請求集。如果省略，預設為：["openid", "profile", "email", "groups"]
+    requestedScopes: ["openid", "profile", "email"]
+    # 可選的 OIDC 聲明請求集，用於 ID 權杖。
+    requestedIDTokenClaims: {"groups": {"essential": true}}
+
+  # 配置自定義資源行為（可選），可以通過拆分子鍵進行配置。
+  # 鍵的格式為：resource.customizations.ignoreDifferences.<group_kind>, resource.customizations.health.<group_kind>
+  # resource.customizations.actions.<group_kind>, resource.customizations.knownTypeFields.<group_kind>
+  # resource.customizations.ignoreResourceUpdates.<group_kind>
+  resource.customizations.ignoreDifferences.admissionregistration.k8s.io_MutatingWebhookConfiguration:
+    |
+    jsonPointers:
+    - /webhooks/0/clientConfig/caBundle
+    jqPathExpressions:
+    - .webhooks[0].clientConfig.caBundle
+    managedFieldsManagers:
+    - kube-controller-manager
+
+  # 配置定義自定義忽略現有和期望狀態之間差異
+  # 適用於所有資源 (GK)。
+  resource.customizations.ignoreDifferences.all: |
+    managedFieldsManagers:
+    - kube-controller-manager
+    jsonPointers:
+    - /spec/replicas
+
+  # 啟用 resource.customizations.ignoreResourceUpdates 規則。如果為 "false"，這些規則不會被應用，
+  # 並且所有資源更新都會應用到集群緩存。預設為 true。
+  resource.ignoreResourceUpdatesEnabled: "true"
+
+  # 配置定義自定義，在監視資源更新期間忽略差異以跳過應用程式調解。
+  resource.customizations.ignoreResourceUpdates.all: |
+    jsonPointers:
+    - /metadata/resourceVersion
+
+  # 配置定義自定義，在監視資源更新期間忽略差異，可以通過拆分子鍵進行配置。
+  resource.customizations.ignoreResourceUpdates.argoproj.io_Application: |
+    jsonPointers:
+    - /status
+
+  # 可以指定 jsonPointers 和 jqPathExpressions。
+  resource.customizations.ignoreResourceUpdates.autoscaling_HorizontalPodAutoscaler:
+    |
+    jqPathExpressions:
+    - '.metadata.annotations."autoscaling.alpha.kubernetes.io/behavior"'
+    - '.metadata.annotations."autoscaling.alpha.kubernetes.io/conditions"'
+    - '.metadata.annotations."autoscaling.alpha.kubernetes.io/metrics"'
+    - '.metadata.annotations."autoscaling.alpha.kubernetes.io/current-metrics"'
+    jsonPointers:
+    - /metadata/annotations/autoscaling.alpha.kubernetes.io~1behavior
+    - /metadata/annotations/autoscaling.alpha.kubernetes.io~1conditions
+    - /metadata/annotations/autoscaling.alpha.kubernetes.io~1metrics
+    - /metadata/annotations/autoscaling.alpha.kubernetes.io~1current-metrics
+
+  resource.customizations.health.certmanager.k8s.io_Certificate: |
+    hs = {}
+    if obj.status ~= nil then
+      if obj.status.conditions ~= nil then
+        for i, condition in ipairs(obj.status.conditions) do
+          if condition.type == "Ready" and condition.status == "False" then
+            hs.status = "Degraded"
+            hs.message = condition.message
+            return hs
+          end
+          if condition.type == "Ready" and condition.status == "True" then
+            hs.status = "Healthy"
+            hs.message = condition.message
+            return hs
+          end
+        end
+      end
+    end
+    hs.status = "Progressing"
+    hs.message = "Waiting for certificate"
+    return hs
+
+  resource.customizations.health.cert-manager.io_Certificate: |
+    hs = {}
+    if obj.status ~= nil then
+      if obj.status.conditions ~= nil then
+        for i, condition in ipairs(obj.status.conditions) do
+          if condition.type == "Ready" and condition.status == "False" then
+            hs.status = "Degraded"
+            hs.message = condition.message
+            return hs
+          end
+          if condition.type == "Ready" and condition.status == "True" then
+            hs.status = "Healthy"
+            hs.message = condition.message
+            return hs
+          end
+        end
+      end
+    end
+    hs.status = "Progressing"
+    hs.message = "Waiting for certificate"
+    return hs
+
+  # List of Lua Scripts to introduce custom actions
+  resource.customizations.actions.apps_Deployment: |
+    # Lua Script to indicate which custom actions are available on the resource
+    discovery.lua: |
+      actions = {}
+      actions["restart"] = {}
+      return actions
+    definitions:
+      - name: restart
+        # Lua Script to modify the obj
+        action.lua: |
+          local os = require("os")
+          if obj.spec.template.metadata == nil then
+              obj.spec.template.metadata = {}
+          end
+          if obj.spec.template.metadata.annotations == nil then
+              obj.spec.template.metadata.annotations = {}
+          end
+          obj.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = os.date("!%Y-%m-%dT%XZ")
+          return obj
+
+  # Configuration to completely ignore entire classes of resource group/kinds (optional).
+  # Excluding high-volume resources improves performance and memory usage, and reduces load and
+  # bandwidth to the Kubernetes API server.
+  # These are globs, so a "*" will match all values.
+  # If you omit groups/kinds/clusters then they will match all groups/kind/clusters.
+  # NOTE: events.k8s.io and metrics.k8s.io are excluded by default
+  resource.exclusions: |
+    - apiGroups:
+      - repositories.stash.appscode.com
+      kinds:
+      - Snapshot
+      clusters:
+      - "*.local"
+
+  # By default all resource group/kinds are included. The resource.inclusions setting allows customizing
+  # list of included group/kinds.
+  resource.inclusions: |
+    - apiGroups:
+      - repositories.stash.appscode.com
+      kinds:
+      - Snapshot
+      clusters:
+      - "*.local"
+
+  # An optional comma-separated list of annotation keys to mask in UI/CLI on secrets
+  resource.sensitive.mask.annotations: openshift.io/token-secret.value,api-key
+
+  # An optional comma-separated list of metadata.labels to observe in the UI.
+  resource.customLabels: tier
+
+  # An optional comma-separated list of metadata.labels keys to add to Kubernetes events generated for Applications.
+  # The keys are compared against the Application and its AppProject. If matched,
+  # the corresponding labels are added to the generated event.
+  # In case of a conflict between labels on the Application and AppProject,
+  # the Application label values are prioritized and added to the event. Supports wildcards.
+  resource.includeEventLabelKeys: team,env*
+  # An optional comma-separated list of metadata.labels keys to exclude from Kubernetes events generated for Applications. Supports wildcards.
+  resource.excludeEventLabelKeys: environment,bu
+
+  resource.compareoptions: |
+    # if ignoreAggregatedRoles set to true then differences caused by aggregated roles in RBAC resources are ignored.
+    ignoreAggregatedRoles: true
+
+    # disables status field diffing in specified resource types
+    # 'crd' - CustomResourceDefinitions 
+    # 'all' - all resources (default)
+    # 'none' - disabled
+    ignoreResourceStatusField: all
+
+  # configuration to instruct controller to only watch for resources that it has permissions to list
+  # can be either empty, "normal" or "strict". By default, it is empty i.e. disabled.
+  resource.respectRBAC: "normal"
+
+  # A set of settings that allow enabling or disabling the config management tool.
+  # If unset, each defaults to "true".
+  kustomize.enabled: "true"
+  jsonnet.enabled: "true"
+  helm.enabled: "true"
+
+  # Build options/parameters to use with `kustomize build` (optional)
+  kustomize.buildOptions: --load_restrictor none
+
+  # Per-version build options and binary paths
+  kustomize.path.v3.9.1: /custom-tools/kustomize_3_9
+  kustomize.buildOptions.v3.9.1: --enable_kyaml true
+
+  # Additional Kustomize versions and corresponding binary paths (deprecated)
+  kustomize.version.v3.5.1: /custom-tools/kustomize_3_5_1
+  kustomize.version.v3.5.4: /custom-tools/kustomize_3_5_4
+
+  # Comma delimited list of additional custom remote values file schemes (http are https are allowed by default).
+  # Change to empty value if you want to disable remote values files altogether.
+  helm.valuesFileSchemes: http, https
+
+  # The metadata.label key name where Argo CD injects the app name as a tracking label (optional).
+  # Tracking labels are used to determine which resources need to be deleted when pruning.
+  # If omitted, Argo CD injects the app name into the label: 'app.kubernetes.io/instance'
+  application.instanceLabelKey: mycompany.com/appname
+
+  # An optional comma-separated list of node labels to propagate to the application pod view.
+  application.allowedNodeLabels: topology.kubernetes.io/zone,node.kubernetes.io/instance-type
+
+  # You can change the resource tracking method Argo CD uses by changing the
+  # setting application.resourceTrackingMethod to the desired method.
+  # The following methods are available:
+  # - annotation       : Uses an annotation with additional metadata for tracking instead of the label
+  # - annotation+label : Also uses an annotation for tracking, but additionally labels the resource with the application name
+  # - label            : Uses the application.instanceLabelKey label for tracking
+  application.resourceTrackingMethod: annotation
+
+  # Optional installation id. Allows to have multiple installations of Argo CD in the same cluster.
+  installationID: "my-unique-id"
+
+  # disables admin user. Admin is enabled by default
+  admin.enabled: "false"
+  # add an additional local user with apiKey and login capabilities
+  #   apiKey - allows generating API keys
+  #   login - allows to login using UI
+  accounts.alice: apiKey, login
+  # disables user. User is enabled by default
+  accounts.alice.enabled: "false"
+
+  # The location of optional user-defined CSS that is loaded at runtime.
+  # Local CSS Files:
+  # - If the supplied path is to a file mounted on the argocd-server container, that file should be mounted
+  #   within a subdirectory of the existing "/shared/app" directory (e.g. "/shared/app/custom").  Otherwise,
+  #   the file will likely fail to be imported by the browser with an "incorrect MIME type" error.
+  # - The path should be specified relative to the "/shared/app" directory; not as an absolute path.
+  # Remote CSS Files:
+  # - Files may also be loaded from remote locations via fully qualified URLs.
+  ui.cssurl: "./custom/my-styles.css"
+
+  # An optional user-defined banner message that's displayed at the top of every UI page.
+  # Every time this is updated, it will clear a user's localStorage telling the UI to hide the banner forever.
+  ui.bannercontent: "Hello there!"
+  # Optional link for banner. If set, the entire banner text will become a link.
+  # You can have bannercontent without a bannerurl, but not the other way around.
+  ui.bannerurl: "https://argoproj.github.io"
+  # Uncomment to make the banner not show the close buttons, thereby making the banner permanent.
+  # Because it is permanent, only one line of text is available to not take up too much real estate in the UI,
+  # so it is recommended that the length of the bannercontent text is kept reasonably short. Note that you can
+  # have either a permanent banner or a regular closeable banner, and NOT both. eg. A user can't dismiss a
+  # notification message (closeable) banner, to then immediately see a permanent banner.
+  # ui.bannerpermanent: "true"
+  # An option to specify the position of the banner, either the top or bottom of the page, or both. The valid values
+  # are: "top", "bottom" and "both".  The default (if the option is not provided), is "top". If "both" is specified, then
+  # the content appears both at the top and the bottom of the page. Uncomment the following line to make the banner appear
+  # at the bottom of the page. Change the value as needed.
+  # ui.bannerposition: "bottom"
+
+  # Application reconciliation timeout is the amount of time spent before Argo tries to discover if a new manifests version got
+  # published to the repository. Reconciliation by timeout is disabled if timeout is set to 0. Two minutes by default with additional jitter.
+  # For the argocd-repo-server this setting defines the expiration
+  # value for cached git revisions.
+  # When set to 0, the cache expiration value will be taken from the
+  # --default-cache-expiration parameter, which is 24 hours by
+  # default, unless another value is set using the
+  # ARGOCD_DEFAULT_CACHE_EXPIRATION variable).
+  # > Note: The argocd-repo-server deployment and the argocd-application-controller statefulset (or deployment, if
+  # configured) must be manually restarted after changing the setting.
+  timeout.reconciliation: 120s
+
+  # With a large number of applications, the periodic refresh for each application can cause a spike in the refresh queue
+  # and can cause a spike in the repo-server component. To avoid this, you can set a jitter to the sync timeout, which will
+  # spread out the refreshes and give time to the repo-server to catch up. The jitter is the maximum duration that can be
+  # added to the sync timeout. So, if the sync timeout is 3 minutes and the jitter is 1 minute, then the actual timeout will
+  # be between 3 and 4 minutes. Disabled when the value is 0, defaults to 1 minute.
+  timeout.reconciliation.jitter: 60s
+
+  # cluster.inClusterEnabled indicates whether to allow in-cluster server address. This is enabled by default.
+  cluster.inClusterEnabled: "true"
+
+  # The maximum number of pod logs to render in UI. If the application has more than this number of pods, the logs will not be rendered.
+  # This is to prevent the UI from becoming unresponsive when rendering a large number of logs. Default is 10.
+  server.maxPodLogsToRender: "10"
+
+  # exec.enabled indicates whether the UI exec feature is enabled. It is disabled by default.
+  exec.enabled: "false"
+
+  # exec.shells restricts which shells are allowed for `exec`, and in which order they are attempted
+  exec.shells: "bash,sh,powershell,cmd"
+
+  # oidc.tls.insecure.skip.verify determines whether certificate verification is skipped when verifying tokens with the
+  # configured OIDC provider (either external or the bundled Dex instance). Setting this to "true" will cause JWT
+  # token verification to pass despite the OIDC provider having an invalid certificate. Only set to "true" if you
+  # understand the risks.
+  oidc.tls.insecure.skip.verify: "false"
+
+  # Add Deep Links to ArgoCD UI
+  # sample project level links
+  project.links: |
+    - url: https://myaudit-system.com?project={{.metadata.name}}
+      title: Audit
+      description: system audit logs
+      icon.class: "fa-book"
+  # sample application level links
+  application.links: |
+    # pkg.go.dev/text/template is used for evaluating url templates
+    - url: https://mycompany.splunk.com?search={{.spec.destination.namespace}}
+      title: Splunk
+    # conditionally show link e.g. for specific project
+    # github.com/expr-lang/expr is used for evaluation of conditions
+    - url: https://mycompany.splunk.com?search={{.spec.destination.namespace}}
+      title: Splunk
+      if: spec.project == "default"
+    - url: https://{{.metadata.annotations.splunkhost}}?search={{.spec.destination.namespace}}
+      title: Splunk
+      if: metadata.annotations.splunkhost
+  # sample resource level links
+  resource.links: |
+    - url: https://mycompany.splunk.com?search={{.metadata.namespace}}
+      title: Splunk
+      if: kind == "Pod" || kind == "Deployment"
+
+  extension.config: |
+    extensions:
+        # Name defines the endpoint that will be used to register
+        # the extension route.
+        # Mandatory field.
+      - name: some-extension
+        backend:
+          # ConnectionTimeout is the maximum amount of time a dial to
+          # the extension server will wait for a connect to complete.
+          # Optional field. Default: 2 seconds
+          connectionTimeout: 2s
+
+          # KeepAlive specifies the interval between keep-alive probes
+          # for an active network connection between the API server and
+          # the extension server.
+          # Optional field. Default: 15 seconds
+          keepAlive: 15s
+
+          # IdleConnectionTimeout is the maximum amount of time an idle
+          # (keep-alive) connection between the API server and the extension
+          # server will remain idle before closing itself.
+          # Optional field. Default: 60 seconds
+          idleConnectionTimeout: 60s
+
+          # MaxIdleConnections controls the maximum number of idle (keep-alive)
+          # connections between the API server and the extension server.
+          # Optional field. Default: 30
+          maxIdleConnections: 30
+
+          services:
+              # URL is the address where the extension backend must be available.
+              # Mandatory field.
+            - url: http://httpbin.org
+
+              # Cluster if provided, will have to match the application
+              # destination name or the destination server to have requests
+              # properly forwarded to this service URL.
+              # Optional field if only one service is specified.
+              # Mandatory if multiple services are specified.
+              cluster:
+                name: some-cluster
+                server: https://some-cluster
+  # The maximum size of the payload that can be sent to the webhook server.
+  webhook.maxPayloadSizeMB: "50"
+
+  # application.sync.impersonation.enabled enables application sync to use a custom service account, via impersonation. This allows decoupling sync from control-plane service account.
+  application.sync.impersonation.enabled: "false"
+
+  # If true, passing passing a different revision from the one given in the application when syncing requires the `override` privilege.
+  # The current default setting up to now (`false`) requires only `sync` privilege for syncing to a different revision.
+  # We highly recommend that this be set to `true`. The next major release will set the default to be `true`.
+  application.sync.requireOverridePrivilegeForRevisionSync: "true"
+
+  ### SourceHydrator commit message template.
+  # This template iterates through the fields in the `.metadata` object,
+  # and formats them based on their type (map, array, or primitive values).
+  # This is the default template and targets specific metadata properties
+  sourceHydrator.commitMessageTemplate: |
+    {{.metadata.drySha | trunc 7}}: {{ .metadata.subject }}
+    {{- if .metadata.body }}
+
+    {{ .metadata.body }}
+    {{- end }}
+    {{ range $ref := .metadata.references }}
+    {{- if and $ref.commit $ref.commit.author }}
+    Co-authored-by: {{ $ref.commit.author }}
+    {{- end }}
+    {{- end }}
+    {{- if .metadata.author }}
+    Co-authored-by: {{ .metadata.author }}
+    {{- end }}

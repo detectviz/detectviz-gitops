@@ -1,0 +1,103 @@
+# Loki 生產環境配置 (Production Overlay for loki-distributed)
+#
+# 本文件為 Grafana Loki 在生產環境的 Helm Chart Values，使用 'loki-distributed' chart 來實現一個
+# 高可用、可擴展且與平台深度整合的日誌聚合系統。
+#
+# 參考文件:
+# - 本平台指南: gitops-argocd/guide/loki.md
+# - Helm Chart 官方文檔: https://github.com/grafana/helm-charts/tree/main/charts/loki-distributed
+
+# --- 全局設定 ---
+loki:
+  # 禁用認證，由 NetworkPolicy 和 Gateway 進行訪問控制。
+  auth_enabled: false
+  # **[關鍵]** 設定保留期限為 30 天。
+  # 參考: guide/loki.md#2.2-儲存管理
+  limits_config:
+    retention_period: 30d
+
+  # **[關鍵]** 使用 filesystem 作為後端儲存。
+  # 參考: guide/loki.md#1.3-儲存
+  storage:
+    type: 'filesystem'
+    filesystem:
+      chunks_directory: /var/loki/chunks
+      rules_directory: /var/loki/rules-temp
+
+  # **[關鍵]** 使用 TSDB 索引，這是目前推薦的高性能索引格式。
+  schema_config:
+    configs:
+      - from: "2024-01-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+
+# --- 元件配置 (Component Configuration) ---
+# **[關鍵]** 將所有關鍵元件的副本數設為 2，以實現高可用。
+# 參考: guide/loki.md#1.2-高可用性
+
+distributor:
+  replicas: 2
+
+ingester:
+  replicas: 2
+  # **[關鍵]** 為 ingester 啟用持久化儲存，並使用 'detectviz-sata' StorageClass。
+  # ingester 使用 WAL (Write Ahead Log) 來防止數據丟失。
+  persistence:
+    enabled: true
+    storageClass: "detectviz-sata"
+    size: 20Gi
+
+querier:
+  replicas: 2
+
+query_frontend:
+  replicas: 2
+
+# Gateway 作為統一入口點。
+gateway:
+  enabled: true
+  replicas: 2
+  service:
+    type: ClusterIP
+
+# Compactor 負責合併小的 chunk 檔案，優化儲存與查詢性能。
+compactor:
+  enabled: true
+  # **[關鍵]** Compactor 也需要持久化儲存來完成其工作。
+  persistence:
+    enabled: true
+    storageClass: "detectviz-sata"
+    size: 10Gi
+
+# --- 可觀測性 (Observability) ---
+# **[關鍵]** 為 Loki 的所有元件啟用 ServiceMonitor，讓 Prometheus 可以抓取其內部指標。
+# 參考: guide/loki.md#2.3-可觀測性
+monitoring:
+  # Distributor ServiceMonitor
+  distributor:
+    serviceMonitor:
+      enabled: true
+  # Ingester ServiceMonitor
+  ingester:
+    serviceMonitor:
+      enabled: true
+  # Querier ServiceMonitor
+  querier:
+    serviceMonitor:
+      enabled: true
+  # Query Frontend ServiceMonitor
+  query_frontend:
+    serviceMonitor:
+      enabled: true
+  # Compactor ServiceMonitor
+  compactor:
+    serviceMonitor:
+      enabled: true
+
+# 禁用測試 Pod
+test:
+  enabled: false

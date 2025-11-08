@@ -1,0 +1,31 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+helmCharts:
+  - name: grafana
+    repo: https://grafana.github.io/helm-charts
+    version: 7.3.9
+    releaseName: grafana
+    namespace: monitoring
+    valuesFile: values.yaml
+    includeCRDs: true
+
+commonLabels:
+  app.kubernetes.io/name: grafana
+  app.kubernetes.io/part-of: detectviz-monitoring
+  app.kubernetes.io/managed-by: kustomize
+  app.kubernetes.io/component: visualization
+
+labels:
+  - pairs:
+      environment: production
+      app.kubernetes.io/part-of: detectviz-monitoring
+    includeSelectors: true
+
+commonAnnotations:
+  argocd.argoproj.io/sync-wave: "1"
+  environment: production
+  cluster: detectviz-production
+
+resources:
+  - hpa.yaml

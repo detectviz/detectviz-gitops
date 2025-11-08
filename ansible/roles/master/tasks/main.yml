@@ -1,0 +1,231 @@
+---
+# ============================================
+# Master 節點角色任務 - 控制平面設置
+# ============================================
+
+# 檢查 kubeadm 是否已經初始化
+- name: 檢查 kubeadm 是否已初始化
+  ansible.builtin.stat:
+    path: /etc/kubernetes/admin.conf # 檢查 admin.conf 文件是否存在
+  register: kubeadm_admin_conf # 保存檢查結果
+
+# 檢查 kubelet 服務狀態（檢測殘留進程）
+- name: 檢查 kubelet 服務狀態
+  ansible.builtin.systemd:
+    name: kubelet
+  register: kubelet_status
+  ignore_errors: true
+
+# 檢查關鍵端口是否被佔用
+- name: 檢查 Port 10250 是否被佔用
+  ansible.builtin.shell: netstat -tuln | grep ':10250' || true
+  register: port_10250_check
+  changed_when: false
+  when: inventory_hostname == groups['masters'][0]
+
+# 自動清理不完整的部署（Port 10250 被佔用但沒有 admin.conf）
+- name: 自動清理不完整的 kubeadm 部署
+  ansible.builtin.command: "kubeadm reset --force"
+  when:
+    - inventory_hostname == groups['masters'][0]
+    - not kubeadm_admin_conf.stat.exists  # admin.conf 不存在
+    - port_10250_check.stdout | length > 0  # 但 Port 10250 被佔用
+  ignore_errors: true
+  tags:
+    - reset
+
+# 根據需要重置集群（僅在第一個 master 上）
+- name: 重置集群（僅在第一個 Master 節點上）
+  ansible.builtin.command: "kubeadm reset --force" # 強制重置 kubeadm 集群
+  when:
+    - reset_cluster | bool # 當 reset_cluster 變數為 true 時
+    - inventory_hostname == groups['masters'][0] # 僅在第一個 master 節點上執行
+  ignore_errors: true # 忽略錯誤（可能沒有現有集群）
+  tags:
+    - reset # 重置相關標籤
+
+# 清理第一個 master 上的舊配置
+- name: 清理第一個 Master 節點上的舊配置
+  ansible.builtin.file:
+    path: "{{ item }}" # 要刪除的文件路徑
+    state: absent # 確保文件不存在
+  loop:
+    - /etc/kubernetes # Kubernetes 配置目錄
+    - /var/lib/kubelet # Kubelet 工作目錄
+    - /var/lib/etcd # etcd 資料目錄
+    - /etc/cni/net.d # CNI 配置目錄
+  when:
+    - reset_cluster | bool # 僅在重置時執行
+    - inventory_hostname == groups['masters'][0] # 僅在第一個 master 上
+  ignore_errors: true # 忽略錯誤
+  tags:
+    - reset # 重置相關標籤
+
+# 生成集群的 kubeadm 配置
+- name: 產生集群的 kubeadm 設定檔
+  ansible.builtin.template:
+    src: kubeadm-config.yaml.j2 # 模板文件來源
+    dest: /tmp/kubeadm-config.yaml # 生成的配置文件路徑
+    mode: "0644" # 文件權限
+  when: inventory_hostname == groups['masters'][0] # 僅在第一個 master 上執行
+
+# 初始化第一個控制平面節點
+- name: 初始化第一個控制平面節點
+  ansible.builtin.command: kubeadm init --config /tmp/kubeadm-config.yaml # 使用配置初始化集群
+  args:
+    creates: /etc/kubernetes/admin.conf # 創建標記文件，避免重複執行
+  when:
+    - inventory_hostname == groups['masters'][0] # 僅在第一個 master 上執行
+    - not kubeadm_admin_conf.stat.exists # 僅在未初始化時執行
+  register: kubeadm_init # 保存初始化結果
+
+# 確保 root 用戶的 kubeconfig 目錄存在
+- name: 確保 root 用戶的 kubeconfig 目錄存在
+  ansible.builtin.file:
+    path: /root/.kube # kubeconfig 目錄路徑
+    state: directory # 確保目錄存在
+    mode: "0700" # 權限：僅 root 可讀寫
+  when: inventory_hostname == groups['masters'][0] # 僅在第一個 master 上執行
+
+# 複製 admin kubeconfig 到 root 上下文
+- name: 複製 admin kubeconfig 到 root 使用者目錄
+  ansible.builtin.copy:
+    src: /etc/kubernetes/admin.conf # 來源文件
+    dest: /root/.kube/config # 目標文件
+    remote_src: yes # 來源是遠程文件
+    mode: "0600" # 權限：僅 root 可讀寫
+  when: inventory_hostname == groups['masters'][0] # 僅在第一個 master 上執行
+
+# 確保控制節點上的本地 kubeconfig 目錄存在
+- name: 確保控制節點上的本地 kubeconfig 目錄存在
+  ansible.builtin.file:
+    path: "{{ playbook_dir }}/kubeconfig" # 本地 kubeconfig 目錄
+    state: directory # 確保目錄存在
+    mode: "0700" # 權限：僅所有者可讀寫
+  delegate_to: localhost # 在控制節點（localhost）上執行
+  become: false # 不使用權限提升
+  run_once: true # 僅執行一次
+
+# 檢索 admin kubeconfig 到控制節點
+- name: 下載 admin kubeconfig 到控制節點
+  ansible.builtin.fetch:
+    src: /etc/kubernetes/admin.conf # 來源文件
+    dest: "{{ playbook_dir }}/kubeconfig/admin.conf" # 目標文件
+    flat: yes # 扁平化路徑
+  when: inventory_hostname == groups['masters'][0] # 僅在第一個 master 上執行
+
+# 上傳控制平面證書以供節點加入
+- name: 上傳控制平面證書供其他節點加入使用
+  ansible.builtin.command: kubeadm init phase upload-certs --upload-certs # 上傳證書
+  register: kubeadm_upload_certs # 保存上傳結果
+  changed_when: false # 不標記為 changed
+  when: inventory_hostname == groups['masters'][0] # 僅在第一個 master 上執行
+
+# 從上傳輸出中提取證書金鑰
+- name: 從上傳輸出中提取證書金鑰
+  ansible.builtin.set_fact:
+    kubeadm_certificate_key: "{{ (kubeadm_upload_certs.stdout | regex_search('([0-9a-f]{64})')) | default('') }}"
+  when: inventory_hostname == groups['masters'][0]
+
+- name: 產生 kubeadm 加入指令的 token
+  ansible.builtin.command: kubeadm token create --print-join-command
+  register: kubeadm_join_command
+  changed_when: false
+  when: inventory_hostname == groups['masters'][0]
+
+- name: 分發加入指令到所有節點
+  ansible.builtin.set_fact:
+    control_plane_join_command: "{{ kubeadm_join_command.stdout }} --control-plane --certificate-key {{ kubeadm_certificate_key }}"
+    worker_join_command: "{{ kubeadm_join_command.stdout }}"
+  delegate_to: "{{ item }}"
+  delegate_facts: true
+  loop: "{{ groups['masters'] + groups['workers'] }}"
+  when:
+    - inventory_hostname == groups['masters'][0]
+    - kubeadm_certificate_key is defined
+    - kubeadm_certificate_key | length > 0
+
+- name: 在第一個控制平面節點上部署 Calico CNI 網路
+  ansible.builtin.command: "kubectl apply -f {{ calico_manifest_url }}"
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: inventory_hostname == groups['masters'][0]
+  register: calico_apply
+  changed_when: "'configured' in calico_apply.stdout or 'created' in calico_apply.stdout"
+  failed_when: calico_apply.rc != 0
+
+- name: 檢查節點是否已作為控制平面加入
+  ansible.builtin.stat:
+    path: /etc/kubernetes/kubelet.conf
+  register: kubelet_conf
+
+- name: 在加入前停止 kubelet 服務
+  ansible.builtin.systemd:
+    name: kubelet
+    state: stopped
+  when: inventory_hostname != groups['masters'][0]
+  ignore_errors: true
+
+- name: 等待服務完全停止
+  ansible.builtin.pause:
+    seconds: 5
+  when: inventory_hostname != groups['masters'][0]
+
+- name: 終止所有剩餘的 Kubernetes 進程
+  ansible.builtin.shell: |
+    for proc in kubelet kube-proxy kube-apiserver kube-controller-manager kube-scheduler; do
+      pkill -9 -x "$proc" 2>/dev/null || true
+    done
+  when: inventory_hostname != groups['masters'][0]
+  ignore_errors: true
+
+- name: 等待進程完全終止
+  ansible.builtin.pause:
+    seconds: 3
+  when: inventory_hostname != groups['masters'][0]
+
+- name: 將額外的控制平面節點加入集群
+  ansible.builtin.command: "{{ control_plane_join_command }} --node-name {{ inventory_hostname }} --ignore-preflight-errors=Port-10250,Port-6443,Port-10259,Port-10257"
+  when:
+    - inventory_hostname != groups['masters'][0]
+    - control_plane_join_command is defined
+    - not kubelet_conf.stat.exists
+  register: join_control_plane
+  changed_when: join_control_plane.rc == 0
+
+# ============================================
+# 確保第一個 master 節點的 CNI 正確初始化
+# ============================================
+
+- name: 等待第一個 Master 節點上的 Calico Pods 就緒
+  ansible.builtin.command: kubectl wait --for=condition=Ready pod -l k8s-app=calico-node -n kube-system --timeout=300s
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: inventory_hostname == groups['masters'][0]
+  register: calico_wait
+  changed_when: false
+  failed_when: false
+  ignore_errors: true
+
+- name: 重啟第一個 Master 的 containerd 和 kubelet 以重新初始化 CNI
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: restarted
+  loop:
+    - containerd
+    - kubelet
+  when:
+    - inventory_hostname == groups['masters'][0]
+    - calico_wait is defined
+
+- name: 等待第一個 Master 節點進入 Ready 狀態
+  ansible.builtin.command: kubectl wait --for=condition=Ready node/{{ inventory_hostname }} --timeout=120s
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: inventory_hostname == groups['masters'][0]
+  register: master_ready
+  changed_when: false
+  retries: 3
+  delay: 10
+  until: master_ready.rc == 0
+  ignore_errors: true

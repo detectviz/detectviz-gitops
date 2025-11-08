@@ -1,0 +1,306 @@
+---
+# -----------------------------------------------------------------
+# Play 1: 準備 Proxmox Host (設定 rp_filter)
+# -----------------------------------------------------------------
+- name: Prepare Proxmox Hypervisor
+  hosts: pve_hosts
+  become: true # 確保有 root 權限
+  roles:
+    - proxmox-host # 執行我們剛才建立的 PVE Host 修正
+# -----------------------------------------------------------------
+# Play 2: 部署 Kubernetes 叢集 (你現有的邏輯)
+# -----------------------------------------------------------------
+
+# 第一階段：配置 DNS 和網路
+- name: 配置所有節點的 DNS 和網路設定
+  # 針對所有節點執行 DNS 和網路配置
+  hosts: all
+  become: true # 以 root 權限執行所有任務
+  gather_facts: true # 收集系統事實資訊
+  vars:
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no" # SSH 連接參數，跳過主機金鑰檢查
+
+  # 任務列表
+  tasks:
+    # 任務：確保 /etc/hosts 文件包含 Detectviz 集群主機解析
+    - name: 確保 /etc/hosts 包含 Detectviz 集群主機解析記錄
+      ansible.builtin.blockinfile:
+        path: /etc/hosts # 目標文件路徑
+        block: "{{ detectviz_hosts_block }}" # 要插入的內容區塊
+        marker: "# {mark} ANSIBLE MANAGED BLOCK - Detectviz Cluster Hosts" # 標記符，用於識別和管理
+        state: present # 確保區塊存在
+      tags:
+        - dns # DNS 相關標籤
+        - hostsfile # 主機文件標籤
+
+    # 任務：配置內部 DNS 解析器
+    - name: 配置內部 DNS 解析器設定
+      ansible.builtin.copy:
+        dest: /etc/resolv.conf # 目標文件路徑
+        content: |
+          nameserver 192.168.0.2
+          search detectviz.internal
+      tags:
+        - dns # DNS 相關標籤
+        - resolver # 解析器標籤
+
+# 第二階段：準備所有節點以安裝 Kubernetes
+- name: 準備所有節點安裝 Kubernetes 環境
+  # 針對所有節點準備 Kubernetes 運行環境
+  hosts: all
+  become: true # 以 root 權限執行
+  gather_facts: true # 收集系統資訊
+
+  # 預任務：在應用角色之前執行
+  pre_tasks:
+    # 任務：檢查集群狀態並決定是否需要清理
+    - name: 檢查集群狀態（決定是否需要清理 Kubernetes 資源）
+      ansible.builtin.stat:
+        path: /etc/kubernetes/admin.conf
+      register: kubeconfig_stat
+      when: reset_cluster | bool
+
+    # 任務：清理集群級別資源（StorageClass, PV, PVC）- 僅在集群運行時執行
+    - name: 清理集群級別的 Kubernetes 資源（重置前）
+      ansible.builtin.command: "{{ item }}"
+      loop:
+        - kubectl delete storageclass --all --ignore-not-found=true --timeout=60s # 刪除所有 StorageClass
+        - kubectl delete pv --all --ignore-not-found=true --timeout=60s # 刪除所有 PersistentVolume
+        - kubectl delete pvc --all --all-namespaces --ignore-not-found=true --timeout=60s # 刪除所有 PersistentVolumeClaim
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf # 使用現有的 admin.conf
+      when:
+        - reset_cluster | bool
+        - kubeconfig_stat.stat.exists | bool # 只有在 kubeconfig 存在時才執行
+        - inventory_hostname == groups['masters'][0] # 只在第一個 master 節點執行
+      ignore_errors: true # 如果集群不可用，忽略錯誤繼續執行
+      tags:
+        - reset
+
+    # 任務：檢查並停止 kubelet 和 containerd 服務（準備重置）
+    - name: 停止 kubelet 和 containerd 服務（準備重置）
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: stopped
+        daemon_reload: true
+      loop:
+        - kubelet
+        - containerd
+      when: reset_cluster | bool
+      failed_when: false # 服務不存在時不視為失敗
+      tags:
+        - reset
+
+    # 任務：刪除靜態 Pod manifests（僅在 master 節點）
+    - name: 刪除 Master 節點上的靜態 Pod 設定檔
+      ansible.builtin.file:
+        path: "/etc/kubernetes/manifests"
+        state: absent
+      when:
+        - reset_cluster | bool
+        - inventory_hostname in groups['masters']
+      ignore_errors: true
+      tags:
+        - reset
+
+    # 任務：強制卸載 kubelet 掛載點
+    - name: 強制卸載 kubelet 掛載的檔案系統
+      ansible.builtin.shell: |
+        # 強制卸載所有 kube-api-access 掛載點
+        for mount in $(mount | grep kube-api-access | awk '{print $3}'); do
+          umount -f "$mount" 2>/dev/null || true
+        done
+        # 卸載 kubelet 目錄
+        umount -f /var/lib/kubelet 2>/dev/null || true
+      when: reset_cluster | bool
+      ignore_errors: true
+      tags:
+        - reset
+
+    # 任務：清理網路配置（iptables, IPVS, 網路接口）
+    - name: 清理網路配置殘留（iptables, IPVS, 接口）
+      ansible.builtin.shell: |
+        # 清理 iptables 規則
+        iptables -F
+        iptables -X
+        iptables -t nat -F
+        iptables -t nat -X
+        iptables -t mangle -F
+        iptables -t mangle -X
+
+        # 清理 IPVS 表
+        ipvsadm --clear 2>/dev/null || true
+
+        # 刪除 Kubernetes 網路接口
+        ip link delete tunl0 2>/dev/null || true
+        ip link delete kube-ipvs0 2>/dev/null || true
+
+        # 清理 Calico/BIRD 路由
+        ip route flush proto bird 2>/dev/null || true
+
+        # 重啟網路服務
+        systemctl restart systemd-networkd 2>/dev/null || true
+      when: reset_cluster | bool
+      ignore_errors: true
+      tags:
+        - reset
+
+    # 任務：強制清理舊配置（重試以處理忙碌的檔案）
+    - name: 清理所有 Kubernetes 舊設定和資料目錄
+      ansible.builtin.command: "rm -rf {{ item }}"
+      loop:
+        - /etc/kubernetes # Kubernetes 設定檔
+        - /var/lib/kubelet # Kubelet 資料目錄
+        - /var/lib/etcd # etcd 資料目錄
+        - /etc/cni/net.d # CNI 網路設定
+        - /var/run/kubernetes # Kubernetes 執行時目錄
+        - /var/lib/cni # CNI 資料目錄
+      when: reset_cluster | bool
+      ignore_errors: true
+      retries: 3
+      delay: 2
+      tags:
+        - reset
+
+  # 應用角色
+  roles:
+    - common # 應用 common 角色進行系統準備
+
+# 第三階段：引導並加入控制平面節點
+- name: 初始化並加入控制平面節點
+  # 針對 master 節點執行控制平面設置
+  hosts: masters
+  become: true # 以 root 權限執行
+  gather_facts: true # 收集系統資訊
+  serial: 1 # 依次執行，避免同時初始化造成衝突
+
+  # 預任務
+  pre_tasks:
+    # 任務：等待 API server 就緒（用於額外的 master 節點）
+    - name: 等待 API Server 就緒（供額外的 Master 節點加入）
+      ansible.builtin.uri:
+        url: "https://{{ control_plane_endpoint }}/healthz" # API server 健康檢查端點（使用實際端點）
+        validate_certs: false # 不驗證 TLS 證書
+        timeout: 5 # 請求超時時間
+      register: api_check # 保存檢查結果
+      until: api_check.status == 200 # 重試直到狀態為 200
+      retries: 30 # 最大重試次數
+      delay: 10 # 重試間隔
+      when: inventory_hostname != groups['masters'][0] # 僅對非第一個 master 執行
+      ignore_errors: true # 忽略錯誤（第一個 master 沒有 API server）
+
+  # 應用角色
+  roles:
+    - master # 應用 master 角色
+
+# 第四階段：將 Worker 節點加入集群
+- name: 將 Worker 節點加入 Kubernetes 集群
+  # 針對 worker 節點加入集群
+  hosts: workers
+  become: true # 以 root 權限執行
+  gather_facts: true # 收集系統資訊
+  serial: 1 # 依次執行，避免資源競爭
+
+  # 應用角色（所有邏輯都在 worker 角色中）
+  roles:
+    - worker # 應用 worker 角色
+
+# 第五階段：生成配置檔案（本地執行）
+- name: 生成 TopoLVM 配置檔案
+  # 在本地生成配置檔案，不需要遠程執行
+  hosts: localhost
+  connection: local
+  become: false # 明確禁用 become，因為 ansible.cfg 中全局啟用了 become
+  gather_facts: false
+
+  tasks:
+    # 任務：生成 TopoLVM 配置檔案
+    - name: 生成 TopoLVM Helm values 配置檔案
+      ansible.builtin.template:
+        src: roles/worker/templates/topolvm-values.yaml.j2
+        dest: /tmp/topolvm-values.yaml
+        mode: "0644"
+      run_once: true
+
+# 第六階段：安裝 NGINX Ingress Controller
+- name: 安裝 NGINX Ingress Controller
+  # 在第一個 master 節點上安裝 NGINX Ingress Controller
+  hosts: masters[0]
+  become: true # 以 root 權限執行
+  gather_facts: false # 不收集系統資訊以加快速度
+  tags:
+    - ingress # 標籤用於選擇性執行
+
+  # 應用角色
+  roles:
+    - ingress # 應用 ingress 角色安裝 NGINX Ingress Controller
+
+# 第七階段：驗證集群部署
+- name: 驗證 Kubernetes 集群部署狀態
+  # 在第一個 master 節點上驗證集群部署結果
+  hosts: masters[0]
+  become: true # 以 root 權限執行
+  gather_facts: false # 不收集系統資訊以加快速度
+
+  # 任務列表
+  tasks:
+    # 任務：等待所有 Calico pods 就緒
+    - name: 等待所有 Calico 網路 Pod 就緒
+      ansible.builtin.command: kubectl wait --for=condition=Ready pod -l k8s-app=calico-node -n kube-system --timeout=300s --all
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      register: calico_ready
+      changed_when: false
+      failed_when: false
+      retries: 3
+      delay: 10
+
+    # 任務：等待所有節點就緒
+    - name: 等待所有節點進入 Ready 狀態
+      ansible.builtin.shell: |
+        # 統計非 Ready 節點數量
+        not_ready=$(kubectl get nodes --no-headers 2>/dev/null | grep -v " Ready " | wc -l)
+        echo "$not_ready"
+        exit 0
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      register: not_ready_count
+      until: not_ready_count.stdout | trim | int == 0
+      retries: 60
+      delay: 5
+      changed_when: false
+
+    # 任務：顯示最終集群狀態
+    - name: 顯示最終集群節點狀態
+      ansible.builtin.command: kubectl get nodes -o wide # 顯示節點詳細狀態
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf # 指定 kubeconfig
+      register: cluster_status # 保存集群狀態
+      changed_when: false # 不標記為 changed
+
+    # 任務：顯示集群資訊總結
+    - name: 顯示集群部署完成資訊
+      ansible.builtin.debug:
+        msg: |
+          🎉 Detectviz Kubernetes 集群部署完成！🎉
+
+          已安裝組件：
+          ✅ Kubernetes 集群 ({{ cluster_status.stdout_lines | length }} 個節點)
+          ✅ Calico CNI 網路
+          ✅ NGINX Ingress Controller
+          ✅ MetalLB LoadBalancer (需要在集群外部配置)
+
+          集群狀態：
+          {{ cluster_status.stdout }}
+
+          網路配置：
+          - 控制平面端點：{{ control_plane_endpoint }}
+          - Pod 網路 CIDR：{{ pod_network_cidr }}
+          - Service 網路 CIDR：{{ service_cidr }}
+          - Ingress Controller: 自動分配 LoadBalancer IP
+
+          下一步操作：
+          1. 驗證集群：kubectl get nodes
+          2. 檢查 Pod：kubectl get pods -A
+          3. 檢查 Ingress：kubectl get svc -n ingress-nginx
+          4. 通過 ArgoCD/GitOps 部署應用

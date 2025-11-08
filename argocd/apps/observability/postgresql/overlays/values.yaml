@@ -1,0 +1,134 @@
+# PostgreSQL HA Configuration (Base Defaults + Production Overrides)
+# 首段保留共用設定，後段追加 production 環境覆寫。
+
+fullnameOverride: postgresql
+
+global:
+  postgresql:
+    # Secret 應包含: postgres-password, password, repmgr-password
+    existingSecret: detectviz-postgresql-admin
+  pgpool:
+    existingSecret: detectviz-postgresql-admin
+
+# Pgpool-II (連接池與負載均衡)
+pgpool:
+  replicaCount: 1
+  podAntiAffinityPreset: soft
+  persistence:
+    enabled: false
+
+# PostgreSQL
+postgresql:
+  replicaCount: 1
+  podAntiAffinityPreset: soft
+  volumePermissions:
+    enabled: true
+  persistence:
+    enabled: false
+
+# Metrics (Prometheus 監控)
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: false  # 由 環境覆寫 啟用
+# --- Production Overrides ---
+# PostgreSQL HA 生產環境配置 (Production Environment Overrides)
+#
+# 本文件為 PostgreSQL HA 在生產環境的 Helm Chart Values，旨在實現一個高可用、可觀測且安全的關聯式資料庫服務。
+#
+# 參考文件:
+# - 本平台指南: gitops-argocd/guide/postgresql.md
+# - Helm Chart 官方文檔: https://github.com/bitnami/charts/tree/main/bitnami/postgresql-ha
+
+fullnameOverride: postgresql
+
+# --- 全局設定 (Global Settings) ---
+global:
+  postgresql:
+    # **[關鍵]** 從名為 'detectviz-postgresql-admin' 的 Kubernetes Secret 中讀取 PostgreSQL 的核心密碼。
+    # Secret 應包含: postgres-password (超級使用者), password (應用程式使用者), repmgr-password (複寫管理器)。
+    # 參考: guide/postgresql.md#1.1-PostgreSQL
+    existingSecret: detectviz-postgresql-admin
+  pgpool:
+    # Pgpool 也使用相同的 Secret 來驗證後端 PostgreSQL 節點。
+    existingSecret: detectviz-postgresql-admin
+
+# --- Pgpool-II (連線池與負載均衡) ---
+pgpool:
+  # **[關鍵]** 設定為 2 個副本，確保連線池層的高可用。
+  # 參考: guide/postgresql.md#1.1-PostgreSQL
+  replicaCount: 2
+  # **[關鍵]** 使用 'hard' 反親和性，強制 Pgpool Pod 被調度到不同的物理節點上，防止單點故障。
+  podAntiAffinityPreset: hard
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # Pgpool 也需要持久化儲存來保存其配置和日誌。
+  persistence:
+    enabled: true
+    storageClass: detectviz-nvme
+    size: 1Gi
+
+  # **[關鍵]** 從名為 'detectviz-pgpool-users' 的 Secret 中讀取使用者密碼檔案 (pgpool_passwd)。
+  customUsersSecret: detectviz-pgpool-users
+
+# --- PostgreSQL (資料庫核心) ---
+postgresql:
+  # **[關鍵]** 設定為 3 個副本 (1 個主節點 Primary, 2 個備節點 Read Replicas)，實現資料庫的高可用與讀寫分離。
+  # 參考: guide/postgresql.md#1.1-PostgreSQL
+  replicaCount: 3
+  # **[關鍵]** 同樣使用 'hard' 反親和性，確保資料庫的多個副本分散在不同的物理節點上。
+  podAntiAffinityPreset: hard
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+
+  # 啟用 volume權限修復的 init container，解決部分環境下 PVC 掛載的權限問題。
+  volumePermissions:
+    enabled: true
+
+  # **[關鍵]** 為 PostgreSQL 啟用持久化儲存。
+  persistence:
+    enabled: true
+    storageClass: detectviz-nvme # 使用 NVMe SSD 以確保資料庫的高 I/O 性能。
+    size: 10Gi
+
+  # **[關鍵]** 從名為 'detectviz-postgresql-initdb' 的 Secret 中讀取初始化 SQL 腳本。
+  # 這些腳本會在資料庫首次創建時執行，用於建立應用程式所需的資料庫、使用者和權限 (例如為 Grafana 創建 'grafana' 資料庫和使用者)。
+  initdbScriptsSecret: detectviz-postgresql-initdb
+
+# --- 可觀測性 (Observability) ---
+metrics:
+  # 啟用 PostgreSQL 的 metrics exporter。
+  enabled: true
+  # **[關鍵]** 啟用 ServiceMonitor，讓 Prometheus Operator 可以自動發現並抓取 PostgreSQL 的指標。
+  # 參考: guide/postgresql.md#1.1-PostgreSQL
+  serviceMonitor:
+    enabled: true
+    namespace: detectviz # 指定 ServiceMonitor 應被創建在哪個命名空間。
+    interval: 30s
+    # 添加額外的標籤，以便 Prometheus 和 Grafana 進行篩選。
+    additionalLabels:
+      app.kubernetes.io/part-of: detectviz-platform
+      app.kubernetes.io/managed-by: bitnami-postgresql-ha
+      prometheus: kube-prometheus-stack # 確保被正確的 Prometheus 實例選中。
+      environment: production
+    # ... relabeling 規則 ...
+    relabelings:
+      - sourceLabels: [__meta_kubernetes_namespace]
+        targetLabel: namespace
+      - sourceLabels: [__meta_kubernetes_pod_name]
+        targetLabel: pod
+      - sourceLabels: [__meta_kubernetes_pod_node_name]
+        targetLabel: node

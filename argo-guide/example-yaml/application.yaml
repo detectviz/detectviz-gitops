@@ -1,0 +1,280 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: guestbook
+  # 您通常會希望將您的資源新增到 argocd 命名空間。
+  namespace: argocd
+  # 僅當您希望這些資源進行級聯刪除時，才新增此 finalizer。
+  finalizers:
+    # 預設行為是前景級聯刪除
+    - resources-finalizer.argocd.argoproj.io
+    # 或者，您可以使用背景級聯刪除
+    # - resources-finalizer.argocd.argoproj.io/background
+  # 為您的應用程式物件新增標籤。
+  labels:
+    name: guestbook
+spec:
+  # 應用程式所屬的專案。
+  project: default
+
+  # 應用程式清單的來源
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps.git  # 可以指向 Helm chart repo 或 git repo。
+    targetRevision: HEAD  # 對於 Helm，這指的是 chart 版本。
+    path: guestbook  # 對於直接從 Helm repo 而非 git 拉取的 Helm chart，這沒有意義。
+
+    # helm 特定設定
+    chart: chart-name  # 當直接從 Helm repo 拉取時設定此項。不要為 git 託管的 Helm chart 設定此項。
+    helm:
+      passCredentials: false # 如果為 true，則將 --pass-credentials 新增到 Helm 命令中，以將憑證傳遞給所有網域
+      # 要設定的額外參數（與透過 values.yaml 設定相同，但這些優先）
+      parameters:
+      - name: "nginx-ingress.controller.service.annotations.external-dns\\.alpha\\.kubernetes\\.io/hostname"
+        value: mydomain.example.com
+      - name: "ingress.annotations.kubernetes\\.io/tls-acme"
+        value: "true"
+        forceString: true # 確保值被視為字串
+
+      # 使用檔案內容作為參數（使用 Helm 的 --set-file）
+      fileParameters:
+      - name: config
+        path: files/config.json
+
+      # 發行版本名稱覆寫（預設為應用程式名稱）
+      releaseName: guestbook
+
+      # 用於覆寫 helm chart 中值的 Helm values 檔案
+      # 路徑是相對於上面定義的 spec.source.path 目錄
+      valueFiles:
+      - values-prod.yaml
+
+      # 安裝 Helm chart 時忽略本地缺少的 valueFiles。預設為 false
+      ignoreMissingValueFiles: false
+
+      # 作為區塊檔案的值檔案。如果可能，請優先使用 valuesObject（見下文）
+      values: |
+        ingress:
+          enabled: true
+          path: /
+          hosts:
+            - mydomain.example.com
+          annotations:
+            kubernetes.io/ingress.class: nginx
+            kubernetes.io/tls-acme: "true"
+          labels: {}
+          tls:
+            - secretName: mydomain-tls
+              hosts:
+                - mydomain.example.com
+
+      # 作為區塊檔案的值檔案。此項優先於 values
+      valuesObject:
+        ingress:
+          enabled: true
+          path: /
+          hosts:
+            - mydomain.example.com
+          annotations:
+            kubernetes.io/ingress.class: nginx
+            kubernetes.io/tls-acme: "true"
+          labels: {}
+          tls:
+            - secretName: mydomain-tls
+              hosts:
+                - mydomain.example.com
+
+      # 如果 chart 包含自訂資源定義，則跳過自訂資源定義的安裝。預設為 false
+      skipCrds: false
+      
+      # 如果 chart 包含 JSON 結構描述驗證，則跳過結構描述驗證。預設為 false
+      skipSchemaValidation: false
+
+      # 可選的 Helm 版本，用於範本化。如果省略，它將回退到查看 Chart.yaml 中的 'apiVersion'
+      # 並自動決定使用哪個 Helm 二進位檔。此欄位可以是 'v2' 或 'v3'。
+      version: v2
+
+      # 您可以指定在範本化清單時要傳遞給 Helm 的 Kubernetes API 版本。預設情況下，Argo CD 使用
+      # 目標叢集的 Kubernetes 版本。該值必須是 semver 格式。不要以 `v` 開頭。
+      kubeVersion: 1.30.0
+
+      # 您可以指定在範本化清單時要傳遞給 Helm 的 Kubernetes 資源 API 版本。預設情況下，Argo
+      # CD 使用目標叢集的 API 版本。格式為 [group/]version/kind。
+      apiVersions:
+        - traefik.io/v1alpha1/TLSOption
+        - v1/Service
+
+      # 可選的命名空間，用於範本化。如果留空，則預設為應用程式的目的地命名空間。
+      namespace: custom-namespace
+
+    # kustomize 特定設定
+    kustomize:
+      # 可選的 kustomize 版本。注意：版本必須在 argocd-cm ConfigMap 中設定
+      version: v3.5.4
+      # 支援的 kustomize 轉換器。https://kubectl.docs.kubernetes.io/references/kustomize/kustomization/
+      namePrefix: prod-
+      nameSuffix: -some-suffix
+      commonLabels:
+        foo: bar
+      commonAnnotations:
+        beep: boop-${ARGOCD_APP_REVISION}
+      # 切換是否在 commonAnnotations 中啟用/停用環境變數替換
+      commonAnnotationsEnvsubst: true
+      # 定義是否應將通用標籤應用於資源選擇器。除非 `labelIncludeTemplates` 設定為 true，否則它也會從範本中排除通用標籤。
+      labelWithoutSelector: false
+      # 定義是否應將通用標籤應用於資源範本。
+      labelIncludeTemplates: false
+      forceCommonLabels: false
+      forceCommonAnnotations: false
+      images:
+      - quay.io/argoprojlabs/argocd-e2e-container:0.2
+      - my-app=gcr.io/my-repo/my-app:0.1
+      namespace: custom-namespace
+      replicas:
+      - name: kustomize-guestbook-ui
+        count: 4
+      components:
+        - ../component  # 相對於 kustomization.yaml (`source.path`)。
+      # 使用 Kustomize Components 時忽略本地缺少的元件目錄。預設為 false
+      ignoreMissingComponents: true
+      patches:
+        - target:
+            kind: Deployment
+            name: guestbook-ui
+          patch: |-
+            - op: add # 將新元素新增到清單中
+              path: /spec/template/spec/nodeSelector/
+              value:
+                env: "pro"
+
+      # 您可以指定在範本化清單時要傳遞給 Helm 的 Kubernetes API 版本。預設情況下，Argo CD 使用
+      # 目標叢集的 Kubernetes 版本。該值必須是 semver 格式。不要以 `v` 開頭。
+      kubeVersion: 1.30.0
+
+      # 您可以指定在範本化清單時要傳遞給 Helm 的 Kubernetes 資源 API 版本。預設情況下，Argo
+      # CD 使用目標叢集的 API 版本。格式為 [group/]version/kind。
+      apiVersions:
+        - traefik.io/v1alpha1/TLSOption
+        - v1/Service
+
+    # 目錄
+    directory:
+      recurse: true
+      jsonnet:
+        # Jsonnet 外部變數列表
+        extVars:
+        - name: foo
+          value: bar
+          # 您可以使用 "code" 來確定值是字串（預設為 false）還是 Jsonnet 程式碼（如果 code 為 true）。
+        - code: true
+          name: baz
+          value: "true"
+        # Jsonnet 頂層參數列表
+        tlas:
+        - code: false
+          name: foo
+          value: bar
+      # Exclude 包含一個 glob 模式，用於比對應明確排除在清單產生期間使用的路徑。
+      # 這優先於 `include` 欄位。
+      # 若要比對多個模式，請將模式用 {} 包裹並用逗號分隔。例如：'{config.yaml,env-use2/*}'
+      exclude: 'config.yaml'
+      # Include 包含一個 glob 模式，用於比對應明確包含在清單產生期間的路徑。
+      # 如果設定了此欄位，則只會包含匹配的清單。
+      # 若要比對多個模式，請將模式用 {} 包裹並用逗號分隔。例如：'{*.yml,*.yaml}'
+      include: '*.yaml'
+
+    # 外掛程式特定設定
+    plugin:
+      # 如果外掛程式被定義為 sidecar 並且未傳遞名稱，則外掛程式將根據外掛程式的發現規則自動與應用程式匹配。
+      name: mypluginname
+      # 傳遞給外掛程式的環境變數
+      env:
+        - name: FOO
+          value: bar
+      # 外掛程式參數是 v2.5 中的新增功能。
+      parameters:
+        - name: string-param
+          string: example-string
+        - name: array-param
+          array: [item1, item2]
+        - name: map-param
+          map:
+            param-name: param-value
+  
+  # Sources 欄位指定應用程式的來源列表
+  sources:
+    - repoURL: https://github.com/argoproj/argocd-example-apps.git  # 可以指向 Helm chart repo 或 git repo。
+      targetRevision: HEAD  # 對於 Helm，這指的是 chart 版本。
+      path: guestbook  # 對於直接從 Helm repo 而非 git 拉取的 Helm chart，這沒有意義。
+      ref: my-repo  # 對於 Helm，作為此來源的參考，用於從此來源取得 values 檔案。在 `source` 欄位下時沒有意義。
+
+  # 部署應用程式的目的地叢集和命名空間
+  destination:
+    # 叢集 API URL
+    server: https://kubernetes.default.svc
+    # 或叢集名稱
+    # name: in-cluster
+    # 命名空間僅會為未設定 .metadata.namespace 值的命名空間範圍資源設定
+    namespace: guestbook
+    
+  # 在 Argo CD 應用程式詳細資訊標籤中顯示的額外資訊
+  info:
+    - name: '範例：'
+      value: 'https://example.com'
+      
+  # 同步策略
+  syncPolicy:
+    automated: # 自動同步預設會重試失敗的嘗試 5 次，每次嘗試之間的延遲如下（5s, 10s, 20s, 40s, 80s）；重試由 `retry` 欄位控制。
+      enabled: true # 啟用應用程式的自動同步（預設為 true）。
+      prune: true # 指定是否應在自動同步期間刪除資源（預設為 false）。
+      selfHeal: true # 指定當資源僅在目標 Kubernetes 叢集中變更且未偵測到 git 變更時，是否應執行部分應用程式同步（預設為 false）。
+      allowEmpty: false # 允許在自動同步期間刪除所有應用程式資源（預設為 false）。
+    syncOptions:     # 修改同步行為的同步選項
+    - Validate=false # 停用資源驗證（相當於 'kubectl apply --validate=false'）（預設為 true）。
+    - CreateNamespace=true # 命名空間自動建立可確保指定為應用程式目的地的命名空間存在於目的地叢集中。
+    - PrunePropagationPolicy=foreground # 支援的策略為 background、foreground 和 orphan。
+    - PruneLast=true # 允許資源刪除作為同步操作的最後一個隱含波次發生
+    - RespectIgnoreDifferences=true # 同步變更時，尊重由 ignoreDifferences 設定忽略的欄位
+    - ApplyOutOfSyncOnly=true # 僅同步不同步的資源，而不是應用應用程式中的每個物件
+    - SkipDryRunOnMissingResource=true # 允許在遺失資源時跳過模擬執行
+    - Replace=true # Argo CD 將使用 kubectl replace 或 kubectl create 命令來應用變更。
+    managedNamespaceMetadata: # 設定應用程式命名空間的中繼資料。僅在 CreateNamespace=true（見上文）時有效，否則無效。
+      labels: # 要在應用程式命名空間上設定的標籤
+        any: label
+        you: like
+      annotations: # 要在應用程式命名空間上設定的註解
+        the: same
+        applies: for
+        annotations: on-the-namespace
+
+    # 重試功能自 v1.7 起可用
+    retry:
+      limit: 5 # 失敗同步嘗試的重試次數；如果小於 0，則不限次數
+      backoff:
+        duration: 5s # 退避的量。預設單位是秒，但也可以是持續時間（例如 "2m", "1h"）
+        factor: 2 # 每次失敗重試後乘以基礎持續時間的因子
+        maxDuration: 3m # 退避策略允許的最大時間量
+
+  # 在差異比較期間將忽略即時狀態和期望狀態之間的差異。請注意，除非啟用 `RespectIgnoreDifferences=true` 同步選項，否則這些設定不會在同步過程中使用。
+  ignoreDifferences:
+  # 對於指定的 json 指標
+  - group: apps
+    kind: Deployment
+    jsonPointers:
+    - /spec/replicas
+  - kind: ConfigMap
+    jqPathExpressions:
+    # 範例：忽略 ConfigMap 中特定鍵的變更
+    - '.data["config.yaml"]'
+  # 對於指定的 managedFields 管理器
+  - group: "*"
+    kind: "*"
+    managedFieldsManagers:
+    - kube-controller-manager
+    # Name 和 namespace 是可選的。如果指定，它們必須完全匹配，這些不是 glob 模式。
+    name: my-deployment
+    namespace: my-namespace
+
+  # RevisionHistoryLimit 限制應用程式修訂歷史中保留的項目數量，該歷史用於資訊目的以及回滾到先前版本。
+  # 僅在特殊情況下才應更改此項。設定為零將不儲存任何歷史記錄。這將減少使用的儲存空間。增加將增加
+  # 用於儲存歷史記錄的空間，因此我們不建議增加它。
+  revisionHistoryLimit: 10

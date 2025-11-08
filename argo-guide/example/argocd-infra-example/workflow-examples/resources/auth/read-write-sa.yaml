@@ -1,0 +1,7 @@
+kind: ServiceAccount
+apiVersion: v1
+metadata:
+  name: read-write
+  annotations:
+    workflows.argoproj.io/rbac-rule: "'argoproj:argo-workflows-approvers' in groups"
+    workflows.argoproj.io/rbac-rule-precedence: "1"

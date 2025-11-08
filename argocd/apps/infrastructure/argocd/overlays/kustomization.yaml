@@ -1,0 +1,25 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  # ArgoCD 核心配置
+  - argocd-cm.yaml
+  - argocd-cmd-params-cm.yaml
+  - argocd-rbac-cm.yaml
+
+  # 安全配置
+  - argocd-secret.yaml
+
+  # 倉庫配置
+  - argocd-repositories.yaml
+
+  # 通知配置已移除 - 如需要請重新添加
+
+# 通用標籤
+labels:
+  - pairs:
+      app.kubernetes.io/managed-by: kustomize
+
+# 通用 annotations
+commonAnnotations:
+  argocd.argoproj.io/sync-wave: "-3"

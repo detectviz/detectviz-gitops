@@ -1,0 +1,100 @@
+# Git 倉庫為 Argo CD 配置倉庫（可選）。
+# 從 UI/CLI 配置/移除倉庫時，此列表會更新
+# 注意：列表中的最後一個範例將使用倉庫認證模板，在 "argocd-repo-creds.yaml" 下配置。
+apiVersion: v1
+kind: Secret
+metadata:
+  name: my-private-https-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  url: https://github.com/argoproj/argocd-example-apps
+  password: my-password
+  username: my-username
+  bearerToken: my-token
+  project: my-project
+  insecure: "true" # 忽略有效性 of server's TLS certificate. Defaults to "false"
+  forceHttpBasicAuth: "true" # 跳過認證方法 negotiation and force usage of HTTP basic auth. Defaults to "false"
+  enableLfs: "true" # 啟用 git-lfs for this repository. Defaults to "false"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: my-private-ssh-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  url: ssh://git@github.com/argoproj/argocd-example-apps
+  sshPrivateKey: |
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    ...
+    -----END OPENSSH PRIVATE KEY-----
+  insecure: "true" # 不執行 a host key check for the server. Defaults to "false"
+  enableLfs: "true" # 啟用 git-lfs for this repository. Defaults to "false"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: istio-helm-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  url: https://storage.googleapis.com/istio-prerelease/daily-build/master-latest-daily/charts
+  name: istio.io
+  project: my-project
+  type: helm
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: private-helm-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  url: https://my-private-chart-repo.internal
+  name: private-repo
+  type: helm
+  password: my-password
+  username: my-username
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: private-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  url: https://github.com/argoproj/private-repo
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: aci-private-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  type: helm
+  url: contoso.azurecr.io/charts
+  name: contosocharts
+  enableOCI: "true"
+  useAzureWorkloadIdentity: "true"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: private-oci-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  username: my-username
+  password: my-password
+  project: myproject
+  type: oci
+  url: oci://my.registry.com/namespace/service

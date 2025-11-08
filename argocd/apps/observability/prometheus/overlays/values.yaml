@@ -1,0 +1,307 @@
+# kube-prometheus-stack Base Configuration
+# Prometheus + Alertmanager + 相關指標收集器 - 基礎配置
+
+fullnameOverride: prometheus
+
+# Grafana (由獨立 Application 管理)
+grafana:
+  enabled: false
+
+# Alertmanager
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    replicas: 1
+    storage:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+
+# Prometheus
+prometheus:
+  enabled: true
+  prometheusSpec:
+    replicas: 1
+    retention: 7d
+
+    # 允許從所有命名空間發現 ServiceMonitor 和 PodMonitor
+    podMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelectorNilUsesHelmValues: false
+
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 20Gi
+
+# Node Exporter (收集節點指標)
+prometheus-node-exporter:
+  enabled: true
+  fullnameOverride: node-exporter
+
+# kube-state-metrics (收集 Kubernetes 資源狀態)
+kube-state-metrics:
+  enabled: true
+  prometheus:
+    monitor:
+      enabled: true
+# --- Production Overrides ---
+# kube-prometheus-stack 生產環境配置 (Production Environment Overrides)
+#
+# 本文件為 kube-prometheus-stack 在生產環境的 Helm Chart Values，旨在實現一個高可用、與 Mimir 深度整合，
+# 並能自動發現所有監控目標的指標控制平面。
+#
+# 參考文件:
+# - 本平台指南: gitops-argocd/guide/prometheus.md
+# - Helm Chart 官方文檔: https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack
+
+# **[關鍵]** 禁用 CRD 安裝以避免衝突
+installCRDs: false
+
+fullnameOverride: prometheus
+
+# **[關鍵]** 禁用內建的 Grafana，因為我們使用獨立部署、更高可用的 Grafana 實例。
+# 參考: guide/prometheus.md#1.1-部署與架構
+grafana:
+  enabled: false
+
+# --- Alertmanager (告警管理) ---
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    # **[關鍵]** 設定為 3 個副本，確保告警服務的高可用。
+    # 參考: guide/prometheus.md#1.5-Alertmanager-組態
+    replicas: 3
+    storage:
+      volumeClaimTemplate:
+        spec:
+          # **[優化]** 使用 'detectviz-sata' 進行持久化儲存，適用於告警狀態這種 I/O 需求不高的場景。
+          storageClassName: detectviz-sata
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 10Gi
+    # ... Pod 標籤 ...
+    podMetadata:
+      labels:
+        app: alertmanager
+        service: alertmanager
+        tier: monitoring
+        component: alerting
+        layer: application
+        environment: production
+
+# --- Prometheus (指標收集與查詢) ---
+prometheus:
+  enabled: true
+  prometheusSpec:
+    # **[關鍵]** 設定為 2 個副本，實現 Prometheus Server 的高可用。
+    replicas: 2
+    retention: 15d # 本地保留 15 天的指標數據，更長期的數據依賴 Mimir。
+
+    # **[關鍵]** 允許 Prometheus 自動發現所有命名空間中的 ServiceMonitor 和 PodMonitor。
+    # 參考: guide/prometheus.md#1.2-指標收集
+    podMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelectorNilUsesHelmValues: false
+
+    # **[關鍵]** 設定外部標籤，附加到所有由本 Prometheus 實例處理的指標上，用於在 Mimir 中區分數據來源。
+    # 參考: guide/prometheus.md#1.4-外部標籤
+    externalLabels:
+      environment: production
+      cluster: detectviz-production
+
+    # **[關鍵]** 設定 remoteWrite，將所有抓取到的指標實時轉發到 Mimir 進行長期儲存。
+    # 參考: guide/prometheus.md#1.3-與-Grafana-Mimir-的整合
+    remoteWrite:
+      - url: http://mimir-nginx.monitoring.svc.cluster.local/api/v1/push
+        remoteTimeout: 30s
+        queueConfig:
+          capacity: 20000
+          maxSamplesPerSend: 1000
+          maxShards: 200
+
+    # **[關鍵]** 為 Prometheus 啟用持久化儲存。
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          # **[優化]** 使用 'detectviz-sata'，因為大部分查詢負載將由 Mimir 承擔，本地儲存的 I/O 需求相對較低。
+          storageClassName: detectviz-sata
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 50Gi
+
+    # ... Pod 標籤 ...
+    podMetadata:
+      labels:
+        app: prometheus
+        service: prometheus
+        tier: monitoring
+        component: metrics-control-plane
+        layer: orchestration
+        environment: production
+
+    # --- 額外的 ServiceMonitor 配置 ---
+    # 透過 additionalServiceMonitors 來抓取不由 Operator 自動發現的目標 (例如集群外部的 Exporter)。
+    additionalServiceMonitors:
+      # IPMI Exporter (硬體監控)
+      - name: ipmi-exporter
+        # ... IPMI Exporter 設定 ...
+        additionalLabels:
+          release: prometheus
+        namespaceSelector:
+          matchNames:
+            - monitoring
+        selector:
+          matchLabels:
+            app.kubernetes.io/name: prometheus-ipmi-exporter
+            app.kubernetes.io/instance: ipmi-exporter
+        endpoints:
+          - port: http
+            interval: 1m
+            scrapeTimeout: 30s
+            params:
+              module:
+                - detectviz-kvm
+            relabelings:
+              - sourceLabels:
+                  [__meta_kubernetes_service_annotation_detectviz_io_ipmi_host]
+                targetLabel: __param_target
+              - sourceLabels: [__param_target]
+                targetLabel: instance
+              - targetLabel: __address__
+                replacement: ipmi-exporter.monitoring.svc.cluster.local:9290
+            metricRelabelings:
+              - targetLabel: environment
+                replacement: production
+              - targetLabel: app_kubernetes_io_part_of
+                replacement: detectviz-production
+      # Proxmox VE Exporter (虛擬化平台監控)
+      # 參考: guide/prometheus.md#1.6-Proxmox-Exporter-整合
+      - name: proxmox-ve-exporter
+        # ... Proxmox Exporter 設定 ...
+        additionalLabels:
+          release: prometheus
+        namespaceSelector:
+          matchNames:
+            - monitoring
+        selector:
+          matchLabels:
+            app.kubernetes.io/name: proxmox-ve-exporter
+            app.kubernetes.io/instance: detectviz-proxmox
+        endpoints:
+          - port: http
+            interval: 1m
+            scrapeTimeout: 30s
+            params:
+              module:
+                - default
+              cluster:
+                - "1"
+              node:
+                - "1"
+            relabelings:
+              - sourceLabels:
+                  [
+                    __meta_kubernetes_service_annotation_detectviz_io_proxmox_target,
+                  ]
+                targetLabel: __param_target
+              - sourceLabels: [__param_target]
+                targetLabel: instance
+              - targetLabel: __address__
+                replacement: proxmox-ve-exporter.monitoring.svc.cluster.local:9221
+            metricRelabelings:
+              - targetLabel: environment
+                replacement: production
+              - targetLabel: app_kubernetes_io_part_of
+                replacement: detectviz-production
+              - targetLabel: detectviz_io_proxmox_host
+                replacement: "192.168.0.2"
+      # ArgoCD 相關的 ServiceMonitors
+      - name: argocd-server-metrics
+        # ... ArgoCD Server Metrics 設定 ...
+        additionalLabels:
+          release: prometheus
+        namespaceSelector:
+          matchNames:
+            - argocd
+        selector:
+          matchLabels:
+            app.kubernetes.io/name: argocd-server-metrics
+        endpoints:
+          - port: metrics
+            interval: 30s
+            scrapeTimeout: 10s
+            honorLabels: true
+      - name: argocd-repo-server-metrics
+        # ... ArgoCD Repo Server Metrics 設定 ...
+        additionalLabels:
+          release: prometheus
+        namespaceSelector:
+          matchNames:
+            - argocd
+        selector:
+          matchLabels:
+            app.kubernetes.io/name: argocd-repo-server-metrics
+        endpoints:
+          - port: metrics
+            interval: 30s
+            scrapeTimeout: 10s
+            honorLabels: true
+      - name: argocd-application-controller-metrics
+        # ... ArgoCD Application Controller Metrics 設定 ...
+        additionalLabels:
+          release: prometheus
+        namespaceSelector:
+          matchNames:
+            - argocd
+        selector:
+          matchLabels:
+            app.kubernetes.io/name: argocd-application-controller-metrics
+        endpoints:
+          - port: metrics
+            interval: 30s
+            scrapeTimeout: 10s
+            honorLabels: true
+# --- Node Exporter (節點硬體指標) ---
+prometheus-node-exporter:
+  enabled: true
+  fullnameOverride: node-exporter
+  serviceMonitor:
+    enabled: true
+    relabelings:
+      # ... relabeling 規則 ...
+      - sourceLabels: [__meta_kubernetes_endpoint_node_name]
+        targetLabel: node
+      - sourceLabels:
+          [__meta_kubernetes_endpoint_node_label_app_kubernetes_io_instance]
+        targetLabel: app_kubernetes_io_instance
+      - sourceLabels:
+          [__meta_kubernetes_endpoint_node_label_app_kubernetes_io_component]
+        targetLabel: app_kubernetes_io_component
+      - sourceLabels:
+          [__meta_kubernetes_endpoint_node_label_app_kubernetes_io_part_of]
+        targetLabel: app_kubernetes_io_part_of
+      - sourceLabels:
+          [__meta_kubernetes_endpoint_node_label_app_kubernetes_io_managed_by]
+        targetLabel: app_kubernetes_io_managed_by
+      - sourceLabels:
+          [__meta_kubernetes_endpoint_node_label_detectviz_io_proxmox_host]
+        targetLabel: detectviz_io_proxmox_host
+# --- kube-state-metrics (Kubernetes 資源狀態) ---
+kube-state-metrics:
+  enabled: true
+  prometheus:
+    monitor:
+      enabled: true
+      metricRelabelings:
+        # ... metricRelabeling 規則 ...
+        - targetLabel: app_kubernetes_io_part_of
+          replacement: detectviz-production
+        - targetLabel: app_kubernetes_io_managed_by
+          replacement: kubernetes

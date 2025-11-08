@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-rbac-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  # RBAC 政策定義
+  policy.csv: |
+    # 授予 admin 角色完整存取權限
+    g, admin, role:admin
+
+  # 預設角色
+  policy.default: role:readonly
+
+  # RBAC 匹配模式
+  policy.matchMode: glob

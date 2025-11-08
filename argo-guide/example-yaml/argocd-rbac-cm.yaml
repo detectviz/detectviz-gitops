@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-rbac-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  # policy.csv 是一個包含使用者定義的 RBAC 政策和角色定義的文件（可選）。
+  # 政策規則的形式為：
+  #   p, subject, resource, action, object, effect
+  # 角色定義和綁定形式為：
+  #   g, subject, inherited-subject
+  # 請參閱 https://github.com/argoproj/argo-cd/blob/master/docs/operator-manual/rbac.md 以獲取更多信息。
+  policy.csv: |
+    # 授予群組 'my-org:team-alpha' 的所有成員在 'my-project' 中同步應用的能力
+    p, my-org:team-alpha, applications, sync, my-project/*, allow
+    # 授予 'my-org:team-beta' 的所有成員管理員權限
+    g, my-org:team-beta, role:admin
+
+  # 可以提供此 configmap 中的額外條目來組成最終的 policy csv。
+  # 在這種情況下，鍵必須遵循模式 'policy.<any string>.csv'。Argo CD 將連接
+  # 在此模式下找到的所有額外政策到主政策（'policy.csv'）下方。這有助於
+  # 在如 Kustomize、Helm 等配置管理工具中組成政策。
+  policy.overlay.csv: |
+    p, role:tester, applications, *, */*, allow
+    p, role:tester, projects, *, *, allow
+    g, my-org:team-qa, role:tester
+
+  # policy.default 是 Argo CD 在授權 API 請求時將回退到的預設角色名稱
+  # （可選）。如果省略或為空，使用者可能仍能登入，
+  # 但不會看到任何應用程式、專案等...
+  policy.default: role:readonly
+
+  # scopes 控制在 rbac 強制執行期間檢查哪些 OIDC 範圍（除了 `sub` 範圍之外）。
+  # 如果省略，預設為：'[groups]'。範圍值可以是字符串，或字符串列表。
+  scopes: "[cognito:groups, email]"
+
+  # matchMode 為 casbin 配置匹配器函數。
+  # 有兩個選項，'glob' 用於通配符匹配器，'regex' 用於正則表達式匹配器。如果省略或配置錯誤，
+  # 將預設設為 'glob'。
+  policy.matchMode: "glob"

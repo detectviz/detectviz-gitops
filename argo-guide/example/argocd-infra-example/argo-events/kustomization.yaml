@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: workflow-playground
+
+resources:
+  - https://github.com/argoproj/argo-events/manifests/namespace-install
+  - https://raw.githubusercontent.com/argoproj/argo-events/master/examples/eventbus/native.yaml
+  - base/operate-workflow-sa.yaml
+  - base/operate-wf-rbac.yaml
+  - base/calendar-eventsource.yaml
+  - base/workflow-sensor.yaml
+  - base/log-sensor.yaml
+
+patches:
+  - path: overlays/patch-priority-class.yaml
+    target:
+      kind: Deployment
+  - path: overlays/patch-priority-class.yaml
+    target:
+      kind: StatefulSet

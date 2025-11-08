@@ -1,0 +1,183 @@
+---
+# ============================================
+# Ingress 角色任務 - NGINX Ingress Controller 安裝
+# ============================================
+
+# ============================================
+# 階段 1: 檢查前置條件
+# ============================================
+
+- name: 檢查 Kubernetes API 服務器是否可訪問
+  ansible.builtin.uri:
+    url: "https://{{ control_plane_endpoint }}:6443/healthz"
+    validate_certs: false
+    timeout: 10
+  register: api_server_check
+  failed_when: false # 不讓檢查失敗，讓後續邏輯處理
+  when: inventory_hostname == groups['masters'][0]
+
+- name: 顯示 API 服務器檢查結果
+  ansible.builtin.debug:
+    msg: "API 服務器檢查: {{ '成功' if api_server_check.status == 200 else '失敗' }}"
+  when: inventory_hostname == groups['masters'][0]
+
+- name: 檢查集群狀態決定是否安裝 Ingress
+  ansible.builtin.debug:
+    msg: "🔄 集群 API 服務器不可訪問，跳過 NGINX Ingress Controller 安裝（將在集群就緒後重試）"
+  when:
+    - inventory_hostname == groups['masters'][0]
+    - api_server_check.status is not defined or api_server_check.status != 200
+
+- name: 跳過後續任務（集群未就緒）
+  ansible.builtin.meta: end_host
+  when:
+    - inventory_hostname == groups['masters'][0]
+    - api_server_check.status is not defined or api_server_check.status != 200
+
+# ============================================
+# 階段 2: 下載並安裝 NGINX Ingress Controller
+# ============================================
+
+- name: 建立 NGINX Ingress Controller 命名空間
+  ansible.builtin.command: "kubectl create namespace ingress-nginx --dry-run=client -o yaml | kubectl apply -f -"
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: inventory_hostname == groups['masters'][0]
+  register: create_namespace
+  changed_when: "'created' in create_namespace.stdout or 'configured' in create_namespace.stdout"
+
+- name: 下載並應用 NGINX Ingress Controller 官方清單
+  ansible.builtin.shell: |
+    # 使用官方推薦的安裝方式
+    kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.11.2/deploy/static/provider/cloud/deploy.yaml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: inventory_hostname == groups['masters'][0]
+  register: install_ingress
+  changed_when: "'created' in install_ingress.stdout or 'configured' in install_ingress.stdout"
+
+- name: 等待 NGINX Ingress Controller 部署就緒
+  ansible.builtin.command: kubectl wait --for=condition=available --timeout=300s deployment/ingress-nginx-controller -n ingress-nginx
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: inventory_hostname == groups['masters'][0]
+  register: wait_deployment
+  until: wait_deployment.rc == 0
+  retries: 3
+  delay: 10
+
+# ============================================
+# 階段 3: 驗證安裝
+# ============================================
+
+- name: 檢查 NGINX Ingress Controller Pod 狀態
+  ansible.builtin.command: kubectl get pods -n ingress-nginx -o wide
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: inventory_hostname == groups['masters'][0]
+  register: check_pods
+  changed_when: false
+
+- name: 顯示 Pod 狀態
+  ansible.builtin.debug:
+    msg: |
+      === NGINX Ingress Controller Pod 狀態 ===
+      {{ check_pods.stdout }}
+  when: inventory_hostname == groups['masters'][0]
+
+- name: 檢查 NGINX Ingress Controller Service 狀態
+  ansible.builtin.command: kubectl get svc -n ingress-nginx
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: inventory_hostname == groups['masters'][0]
+  register: check_service
+  changed_when: false
+
+- name: 顯示 Service 狀態
+  ansible.builtin.debug:
+    msg: |
+      === NGINX Ingress Controller Service 狀態 ===
+      {{ check_service.stdout }}
+  when: inventory_hostname == groups['masters'][0]
+
+# ============================================
+# 階段 4: 創建測試資源驗證功能
+# ============================================
+
+- name: 創建測試用的 Ingress 資源
+  ansible.builtin.shell: |
+    cat <<'EOF' | kubectl apply -f -
+    apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    metadata:
+      name: test-ingress
+      namespace: default
+      annotations:
+        nginx.ingress.kubernetes.io/rewrite-target: /
+    spec:
+      ingressClassName: nginx
+      rules:
+      - host: test.local
+        http:
+          paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kubernetes
+                port:
+                  number: 443
+    EOF
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: inventory_hostname == groups['masters'][0]
+  register: create_test_ingress
+  changed_when: "'created' in create_test_ingress.stdout"
+
+- name: 驗證 Ingress 資源創建成功
+  ansible.builtin.command: kubectl get ingress test-ingress -n default
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: inventory_hostname == groups['masters'][0]
+  register: verify_ingress
+  changed_when: false
+
+- name: 顯示 Ingress 驗證結果
+  ansible.builtin.debug:
+    msg: |
+      === Ingress 資源驗證 ===
+      {{ verify_ingress.stdout }}
+  when: inventory_hostname == groups['masters'][0]
+
+# ============================================
+# 階段 5: 清理測試資源
+# ============================================
+
+- name: 清理測試用的 Ingress 資源
+  ansible.builtin.command: kubectl delete ingress test-ingress -n default --ignore-not-found=true
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: inventory_hostname == groups['masters'][0]
+  register: cleanup_test
+  changed_when: "'deleted' in cleanup_test.stdout"
+
+# ============================================
+# 階段 6: 安裝總結
+# ============================================
+
+- name: 顯示 NGINX Ingress Controller 安裝完成資訊
+  ansible.builtin.debug:
+    msg: |
+      🎉 NGINX Ingress Controller 安裝完成！🎉
+
+      安裝摘要：
+      - 命名空間: ingress-nginx
+      - 控制器: ingress-nginx-controller
+      - Service: ingress-nginx-controller (LoadBalancer)
+      - Ingress Class: nginx
+
+      下一步操作：
+      1. 驗證外部訪問: kubectl get svc -n ingress-nginx
+      2. 檢查 Ingress 資源: kubectl get ingress -A
+      3. 配置 DNS 或 /etc/hosts 指向 LoadBalancer IP
+  when: inventory_hostname == groups['masters'][0]

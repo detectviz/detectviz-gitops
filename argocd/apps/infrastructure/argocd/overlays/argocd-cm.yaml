@@ -1,0 +1,66 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  # Argo CD 對外暴露的基本 URL - 根據實際域名修改
+  url: https://argocd.detectviz.local
+
+  # 啟用應用程式狀態徽章功能
+  statusbadge.enabled: "true"
+
+  # 啟用匿名使用者存取
+  users.anonymous.enabled: "true"
+
+  # 指定權杖過期持續時間
+  users.session.duration: "24h"
+
+  # 啟用 Kustomize
+  kustomize.enabled: "true"
+
+  # 啟用 Jsonnet
+  jsonnet.enabled: "true"
+
+  # 啟用 Helm
+  helm.enabled: "true"
+
+  # 應用程式資源追蹤方法
+  application.resourceTrackingMethod: annotation
+
+  # 啟用 exec 功能 (用於故障排除)
+  exec.enabled: "true"
+
+  # 允許的 exec shells
+  exec.shells: "bash,sh"
+
+  # 集群資源排除
+  resource.exclusions: |
+    - apiGroups:
+      - events.k8s.io
+      - metrics.k8s.io
+
+  # 資源比較選項
+  resource.compareoptions: |
+    ignoreAggregatedRoles: true
+
+  # Dex SSO 配置 - 使用 GitHub App
+  dex.config: |
+    issuer: https://argocd.detectviz.local/api/dex
+    storage:
+      type: memory
+    web:
+      http: 0.0.0.0:5556
+    connectors:
+    - type: github
+      id: github
+      name: GitHub
+      config:
+        clientID: Iv23liRniVgX4o7RNaFT
+        clientSecret: $dex.github.clientSecret
+        redirectURI: https://argocd.detectviz.local/api/dex/callback
+        orgs:
+        - name: detectviz

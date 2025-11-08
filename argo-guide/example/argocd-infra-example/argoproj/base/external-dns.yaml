@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: external-dns
+  namespace: argocd
+  ### Just as a prevention, we do not want Argo CD to destruct it's dependencies
+  # finalizers:
+  #   - resources-finalizer.argocd.argoproj.io
+spec:
+  source:
+    path: external-dns
+    repoURL: https://github.com/argoproj/argoproj-deployments
+    targetRevision: HEAD
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: external-dns
+  project: default
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+    automated:
+      prune: true
+      selfHeal: true
