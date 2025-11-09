@@ -66,93 +66,77 @@
   - [ ] 所有數據源 (Prometheus/Loki/Mimir/PostgreSQL) 連線正常
   - [ ] 預設儀表板正確顯示
 
-## Phase 4: 資料層
-
-- [ ] **4.1 PostgreSQL**
+- [ ] **3.5 PostgreSQL**
   - [ ] Zalando Operator 運行中
   - [ ] PostgreSQL 三副本 HA 叢集
   - [ ] Patroni 自動 Failover 測試通過
   - [ ] Connection Pooler 正常運作
   - [ ] 備份策略配置 (每日備份)
 
-- [ ] **4.2 ChromaDB**
-  - [ ] ChromaDB StatefulSet Running
-  - [ ] PVC 持久化正常
-  - [ ] API 端點可訪問
-  - [ ] 測試向量寫入/查詢成功
+## Phase 4: 自動化與 HPA
 
-## Phase 5: AI 層
-
-- [ ] **5.1 Ollama**
-  - [ ] Ollama Pod Running (vm-5)
-  - [ ] 模型已下載 (llama3.1:8b, mistral:7b)
-  - [ ] API 端點回應正常
-  - [ ] 測試推理延遲 < 10s
-
-## Phase 6: 自動化與 HPA
-
-- [ ] **6.1 HPA 配置**
+- [ ] **4.1 HPA 配置**
   - [ ] 示例應用 HPA 正確配置
   - [ ] CPU/Memory 指標正常觸發擴縮
   - [ ] 自訂指標 (Custom Metrics) 可用
 
-- [ ] **6.2 告警規則**
+- [ ] **4.2 告警規則**
   - [ ] 所有 SRE 告警規則已載入
   - [ ] 測試觸發關鍵告警 (HighPodCPU, OOMKilled 等)
   - [ ] Alertmanager 正確路由
   - [ ] LLM Plugin 接收並分析告警
 
-- [ ] **6.3 自動修復**
+- [ ] **4.3 自動修復**
   - [ ] Auto Remediator 配置完成
   - [ ] 測試自動擴縮場景
   - [ ] 測試自動重啟場景
   - [ ] Dry-run 模式驗證
 
-## Phase 7: 故障模擬與驗證
+## Phase 5: 故障模擬與驗證
 
-- [ ] **7.1 Pod Crash 恢復**
+- [ ] **5.1 Pod Crash 恢復**
   - [ ] Pod 刪除後 30s 內自動重建
   - [ ] LLM 分析 crash 原因
 
-- [ ] **7.2 Node Down 恢復**
+- [ ] **5.2 Node Down 恢復**
   - [ ] Node NotReady 後 90s 內 Pod 遷移
   - [ ] HA 服務無中斷
 
-- [ ] **7.3 CPU 壓測**
+- [ ] **5.3 CPU 壓測**
   - [ ] HPA 正確擴縮 (min → max 範圍內)
   - [ ] P95 延遲保持 < 500ms
   - [ ] 錯誤率 < 1%
 
-## Phase 8: 性能與可靠性
+## Phase 6: 性能與可靠性
 
-- [ ] **8.1 性能基準**
+- [ ] **6.1 性能基準**
   - [ ] API P95 延遲 < 500ms
   - [ ] 錯誤率 < 1% (正常負載)
   - [ ] Grafana 儀表板載入 < 2s
 
-- [ ] **8.2 LLM 分析性能**
+- [ ] **6.2 LLM 分析性能**
   - [ ] 告警分析平均耗時 < 15s
   - [ ] 並發分析請求 > 5 qps
 
-- [ ] **8.3 資料持久性**
+- [ ] **6.3 資料持久性**
   - [ ] PostgreSQL 備份每日執行
   - [ ] 備份還原測試成功
 
-## Phase 9: 安全性
+## Phase 7: 安全性
 
-- [ ] **9.1 網路安全**
+- [ ] **7.1 網路安全**
   - [ ] NetworkPolicy 正確限制流量
   - [ ] 只有必要端口對外開放
 
-- [ ] **9.2 認證與授權**
+- [ ] **7.2 認證與授權**
   - [ ] RBAC 正確配置
   - [ ] ServiceAccount 遵循最小權限原則
 
-- [ ] **9.3 密鑰管理**
+- [ ] **7.3 密鑰管理**
   - [ ] 所有敏感資訊存儲在 Vault
   - [ ] 無明文密碼在 YAML 中
 
-## Phase 10: 端到端工作流
+## Phase 8: 端到端工作流
   - [ ] 完整流程無中斷 (`告警 → 分析 → 建議 → (可選)修復 → 驗證 → 關閉`)
   - [ ] 每個環節延遲可接受
   - [ ] 結果正確記錄
@@ -164,7 +148,5 @@
 | 階段 | 負責人 | 完成日期 | 簽核 |
 |---|---|---|---|
 | Phase 1-3: 基礎與監控 | SRE Team | | ☐ |
-| Phase 4-5: 資料與 AI | Platform Team | | ☐ |
-| Phase 6: 自動化 | DevOps Team | | ☐ |
-| Phase 7-10: 驗證與整合 | QA Team | | ☐ |
+| Phase 4-8: 驗證與整合 | QA Team | | ☐ |
 | **總簽核** | **Project Lead** | | ☐ |

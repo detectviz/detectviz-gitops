@@ -252,10 +252,6 @@ manual_ha_fix() {
     ssh ubuntu@192.168.0.14 "sudo systemctl stop kubelet && sudo kubeadm reset --force && sudo systemctl restart containerd"
     ssh ubuntu@192.168.0.14 "sudo $join_cmd"
 
-    log_info "讓 ai 節點加入集群..."
-    ssh ubuntu@192.168.0.15 "sudo systemctl stop kubelet && sudo kubeadm reset --force && sudo systemctl restart containerd"
-    ssh ubuntu@192.168.0.15 "sudo $join_cmd"
-
     log_success "HA 集群修復完成"
 }
 

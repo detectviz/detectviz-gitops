@@ -130,25 +130,25 @@ variable "master_hostnames" {
 variable "worker_hostnames" {
   description = "Worker 節點主機名稱清單"
   type        = list(string)
-  default     = ["app", "ai"]
+  default     = ["app-worker"]
 }
 
 variable "worker_cores" {
   description = "Worker 節點 CPU 核心數（依序對應 worker_hostnames）"
   type        = list(number)
-  default     = [6, 7]
+  default     = [12]
 }
 
 variable "worker_memory" {
   description = "Worker 節點記憶體 (MB)"
   type        = number
-  default     = 16384
+  default     = 24576
 }
 
 variable "worker_system_disk_sizes" {
   description = "Worker 節點系統磁碟大小（依序對應 worker_hostnames）"
   type        = list(string)
-  default     = ["120G", "120G"]
+  default     = ["320G"]
 }
 
 variable "worker_data_disks" {
@@ -157,22 +157,13 @@ variable "worker_data_disks" {
     size    = string
     storage = string
   }))
-  default = [
-    {
-      size    = "200G"
-      storage = "nvme-vm"
-    },
-    {
-      size    = "400G"
-      storage = "nvme-vm"
-    }
-  ]
+  default = []
 }
 
 variable "worker_ips" {
   description = "Worker 節點 IP 位址清單"
   type        = list(string)
-  default     = ["192.168.0.14", "192.168.0.15"]
+  default     = ["192.168.0.14"]
 }
 
 # ============================================

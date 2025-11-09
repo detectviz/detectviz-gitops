@@ -5,7 +5,7 @@
 
 # 集群基本資訊
 cluster_name: detectviz # 集群名稱，用於識別 Kubernetes 集群
-kubernetes_version: "1.30.2" # Kubernetes 版本號
+kubernetes_version: "1.32.0" # Kubernetes 版本號
 kubernetes_package_version: "" # Kubernetes 套件版本
 control_plane_endpoint: "k8s-api.detectviz.internal:6443" # 控制平面端點，指向 HA VIP
 cluster_vip: "192.168.0.10" # HA VIP

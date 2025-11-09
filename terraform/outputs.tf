@@ -50,8 +50,8 @@ output "worker_nodes_details" {
       cores             = vm.cpu[0].cores
       memory            = "${vm.memory[0].dedicated / 1024} GB"
       system_disk       = var.worker_system_disk_sizes[i]
-      data_disk         = length(var.worker_data_disks) == length(var.worker_hostnames) ? var.worker_data_disks[i].size : ""
-      data_disk_storage = length(var.worker_data_disks) == length(var.worker_hostnames) ? var.worker_data_disks[i].storage : ""
+      data_disk         = length(var.worker_data_disks) > i ? var.worker_data_disks[i].size : ""
+      data_disk_storage = length(var.worker_data_disks) > i ? var.worker_data_disks[i].storage : ""
       ssh               = "ssh ${var.vm_user}@${var.worker_ips[i]}"
       host_id           = var.proxmox_host_id
       node_role         = "worker"

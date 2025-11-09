@@ -51,10 +51,10 @@ echo "----------------------"
 
 # Check node count
 NODE_COUNT=$(kubectl get nodes --no-headers | wc -l)
-if [ "$NODE_COUNT" -eq 5 ]; then
-    print_status 0 "All 5 nodes are present (3 masters + 2 workers)"
+if [ "$NODE_COUNT" -eq 4 ]; then
+    print_status 0 "All 4 nodes are present (3 masters + 1 worker)"
 else
-    print_status 1 "Expected 5 nodes, found $NODE_COUNT"
+    print_status 1 "Expected 4 nodes, found $NODE_COUNT"
 fi
 
 # Check node readiness

@@ -1,6 +1,6 @@
 # ansible
 
-使用 Ansible 自動化部署高可用 Kubernetes 集群（3 Master + 2 Worker 節點）。
+使用 Ansible 自動化部署高可用 Kubernetes 集群（3 Master + 1 Worker 節點）。
 
 ---
 
@@ -18,7 +18,7 @@
 
 ### 部署範圍
 - 3 個控制平面節點（etcd + API Server）
-- 2 個工作節點（kubelet + kube-proxy）
+- 1 個工作節點（kubelet + kube-proxy）
 - 高可用 VIP 配置
 - Calico CNI 網路插件
 - NGINX Ingress Controller
@@ -117,7 +117,6 @@ master-3 ansible_host=192.168.0.13 ansible_user=ubuntu ansible_ssh_private_key_f
 
 [workers]
 app ansible_host=192.168.0.14 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa
-ai ansible_host=192.168.0.15 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa
 ```
 
 ### 全域變數（group_vars/all.yml）

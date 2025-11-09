@@ -131,15 +131,15 @@ resource "proxmox_virtual_environment_vm" "k8s_masters" {
 }
 
 # ============================================
-# Worker 節點 (vm-4, vm-5)
+# Worker 節點 (vm-4)
 # ============================================
 resource "proxmox_virtual_environment_vm" "k8s_workers" {
-  count = 2
+  count = 1
 
-  name        = "vm-${count.index + 4}"
-  description = "Kubernetes Worker Node ${count.index + 4}"
+  name        = "app-worker"
+  description = "Kubernetes Application Worker Node"
   node_name   = var.proxmox_target_node
-  vm_id       = 114 + count.index
+  vm_id       = 114
 
   # Clone 配置
   clone {
@@ -168,23 +168,12 @@ resource "proxmox_virtual_environment_vm" "k8s_workers" {
     dedicated = var.worker_memory
   }
 
-  # 系統磁碟配置
+  # 系統磁碟配置 (合併系統與應用儲存)
   disk {
     datastore_id = var.proxmox_storage
     interface    = "scsi0"
-    size         = parseint(replace(var.worker_system_disk_sizes[count.index], "G", ""), 10)
+    size         = parseint(replace(var.worker_system_disk_sizes[0], "G", ""), 10)
     file_format  = "raw"
-  }
-
-  # 額外資料磁碟（若有設定）
-  dynamic "disk" {
-    for_each = try([var.worker_data_disks[count.index]], [])
-    content {
-      datastore_id = disk.value.storage
-      interface    = "scsi1"
-      size         = parseint(replace(disk.value.size, "G", ""), 10)
-      file_format  = "raw"
-    }
   }
 
   # 網路配置

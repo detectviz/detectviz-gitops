@@ -10,8 +10,9 @@ proxmox_tls_insecure = true
 
 # Proxmox API Token 配置
 # 生成方式請參考 docs/proxmox-setup.md#建立-terraform-專用角色api-token
-proxmox_api_token_id     = "terraform-prov@pve!terraform-token"
-proxmox_api_token_secret = "your-actual-token-secret-here"
+# ⚠️ 請填入您的實際 API Token 資訊
+proxmox_api_token_id     = "your-token-id-here"           # 例如：terraform-prov@pve!terraform-token
+proxmox_api_token_secret = "your-token-secret-here"       # 填入實際的 token secret
 
 # ============================================
 # Proxmox 節點與儲存配置
@@ -48,16 +49,16 @@ ssh_public_key = "" # 留空自動讀取預設值
 ssh_private_key_path = "~/.ssh/id_rsa" # 留空自動讀取預設值
 
 # ============================================
-# Master 節點配置（3 台，對應 deployment.md）
+# Master 節點配置（3 台，對應 README.md）
 # ============================================
-master_cores     = 3
-master_memory    = 8192 # 8 GB
+master_cores     = [4, 3, 3] # vm-1: 4 cores, vm-2/vm-3: 3 cores
+master_memory    = 8192      # 8 GB
 master_disk_size = "100G"
 
 master_ips = [
-  "192.168.0.11", # vm-1
-  "192.168.0.12", # vm-2
-  "192.168.0.13", # vm-3
+  "192.168.0.11", # vm-1 (master-1)
+  "192.168.0.12", # vm-2 (master-2)
+  "192.168.0.13", # vm-3 (master-3)
 ]
 
 master_hostnames = [
@@ -67,38 +68,27 @@ master_hostnames = [
 ]
 
 # ============================================
-# Worker 節點配置（2 台，對應 deployment.md）
+# Worker 節點配置（1 台，對應 README.md）
 # ============================================
 worker_cores = [
-  6, # vm-4 (app)
-  7, # vm-5 (ai)
+  12, # vm-4 (app-worker)
 ]
-worker_memory = 16384 # 16 GB
+worker_memory = 24576 # 24 GB
 
 worker_system_disk_sizes = [
-  "120G", # vm-4 系統磁碟
-  "120G", # vm-5 系統磁碟
+  "320G", # vm-4 應用磁碟 (合併系統與應用儲存)
 ]
 
 worker_data_disks = [
-  {
-    size    = "200G" # vm-4 資料磁碟
-    storage = "nvme-vm"
-  },
-  {
-    size    = "400G" # vm-5 資料磁碟
-    storage = "nvme-vm"
-  }
+  # 應用磁碟已包含在系統磁碟中，無需額外資料磁碟
 ]
 
 worker_ips = [
-  "192.168.0.14", # vm-4 (Grafana Web, PostgreSQL, ChromaDB)
-  "192.168.0.15", # vm-5 (Ollama, LLM Plugin)
+  "192.168.0.14", # vm-4 (app-worker)
 ]
 
 worker_hostnames = [
-  "app", # 對應 app.detectviz.internal
-  "ai",  # 對應 ai.detectviz.internal
+  "app-worker", # 對應 app-worker.detectviz.internal
 ]
 
 # ============================================
@@ -133,17 +123,17 @@ proxmox_host_id = "proxmox"        # 供節點標籤與監控使用，請以 `pv
 # - [ ] Ubuntu 22.04 Cloud Image 模板已建立（VM ID 9000，名稱：ubuntu-2204-template）
 # - [ ] SSH 公鑰已正確配置（自動讀取 ~/.ssh/id_rsa.pub）
 # - [ ] 網路配置（IP、Gateway、DNS）已確認
-# - [ ] 儲存空間足夠（Master: 3×100GB, Worker: 2×120GB + 2×200GB/400GB = 總計 1.04TB）
-# - [ ] CPU 與記憶體資源足夠（總計 22 核心、56 GB RAM，預留 Hypervisor 使用）
+# - [ ] 儲存空間足夠（Master: 3×100GB, Worker: 1×320GB = 總計 620GB）
+# - [ ] CPU 與記憶體資源足夠（總計 10 核心、32 GB RAM，預留 Hypervisor 使用）
 
 # ============================================
-# 網路規劃參考（對應 deployment.md）
+# 網路規劃參考（對應 README.md）
 # ============================================
 # 192.168.0.10  - Control Plane VIP (HAProxy)
 # 192.168.0.11  - master-1 (vm-1) - Prometheus Operator, Alertmanager
 # 192.168.0.12  - master-2 (vm-2) - Mimir Distributor/Ingester
 # 192.168.0.13  - master-3 (vm-3) - Loki Distributor/Querier
-# 192.168.0.14  - worker-1 (vm-4) - Grafana Web, PostgreSQL, ChromaDB
+# 192.168.0.14  - app-worker (vm-4) - Argo CD, Grafana, Tempo, PostgreSQL, Vault
 
 # Pod CIDR:     10.244.0.0/16
 # Service CIDR: 10.96.0.0/12

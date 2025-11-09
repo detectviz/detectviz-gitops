@@ -17,7 +17,7 @@ Terraform 配置，用於在 Proxmox 上自動化創建 Detectviz 平台所需�
 
 ### 創建資源
 - 3 個 Master 節點（控制平面）
-- 2 個 Worker 節點（應用運行）
+- 1 個 Worker 節點（應用運行）
 - Ubuntu 22.04 LTS 作業系統
 - 自訂網路配置（192.168.0.0/24）
 - NVMe/SSD 混合儲存架構
@@ -124,10 +124,10 @@ master_disk   = 50    # GB
 
 #### Worker 節點
 ```hcl
-worker_count  = 2
-worker_cpu    = 8
-worker_memory = 16384
-worker_disk   = 100
+worker_count  = 1
+worker_cpu    = 12
+worker_memory = 24576
+worker_disk   = 320
 ```
 
 ---
