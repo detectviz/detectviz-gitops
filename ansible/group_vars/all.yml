@@ -5,25 +5,25 @@
 
 # 集群基本資訊
 cluster_name: detectviz # 集群名稱，用於識別 Kubernetes 集群
-kubernetes_version:
-  "1.32.0" # Kubernetes 版本號，建議使用穩定版本
-  # 可通過 `curl -sSL https://dl.k8s.io/release/stable.txt` 獲取最新穩定版本
-kubernetes_package_version:
-  "" # Kubernetes 套件版本，若留空則使用 apt 的最新版本
-  # 可通過 `apt-cache madison kubeadm` 查看可用版本格式如 "1.32.0-1.1"
+kubernetes_version: "1.30.2" # Kubernetes 版本號
+kubernetes_package_version: "" # Kubernetes 套件版本
+control_plane_endpoint: "k8s-api.detectviz.internal:6443" # 控制平面端點，指向 HA VIP
+cluster_vip: "192.168.0.10" # HA VIP
 
 # 網路配置
-pod_network_cidr: "10.244.0.0/16" # Pod 網路 CIDR，定義 Pod IP 地址範圍
-service_cidr: "10.96.0.0/12" # Service 網路 CIDR，定義 Service IP 地址範圍
-control_plane_endpoint: "192.168.0.11:6443" # 控制平面端點，使用 master-1 實際 IP（後續可升級為 HA VIP）
+pod_network_cidr: "10.244.0.0/16" # Pod 網路 CIDR
+service_cidr: "10.96.0.0/12" # Service 網路 CIDR
 
 # 容器運行時配置
-containerd_sandbox_image: "registry.k8s.io/pause:3.10" # Containerd 沙箱鏡像，用於 Pod 基礎設施容器（K8s 1.32.0 推薦）
+containerd_sandbox_image: "registry.k8s.io/pause:3.9" # Containerd 沙箱鏡像
 
 # CNI (Container Network Interface) 配置
-calico_manifest_url:
-  "https://raw.githubusercontent.com/projectcalico/calico/v3.27.3/manifests/calico.yaml"
-  # Calico CNI 插件安裝清單 URL
+cni_provider: "calico"
+calico_manifest_url: "https://raw.githubusercontent.com/projectcalico/calico/v3.27.3/manifests/calico.yaml" # Calico CNI 插件安裝清單 URL
+calico_manifest_local_path: "/tmp/calico-patched.yaml"
+
+# K8s HA 配置
+kube_vip_version: "v0.7.1"
 
 # ============================================
 # DNS 和網路配置區塊
@@ -34,32 +34,9 @@ detectviz_hosts_block: |
   192.168.0.11 master-1.detectviz.internal    # Master 節點 1 - 控制平面主要節點
   192.168.0.12 master-2.detectviz.internal    # Master 節點 2 - 控制平面 HA 節點
   192.168.0.13 master-3.detectviz.internal    # Master 節點 3 - 控制平面 HA 節點
-  192.168.0.14 app.detectviz.internal         # 應用 Worker 節點 - 用於部署應用服務
+  192.168.0.14 app-worker.detectviz.internal # 應用 Worker 節點 - 用於部署應用服務
   192.168.0.10 k8s-api.detectviz.internal     # Kubernetes API 虛擬 IP - 負載均衡訪問點
   # END ANSIBLE MANAGED BLOCK
-
-# ============================================
-# LVM 儲存配置 (僅適用於 Worker 節點)
-# ============================================
-# 為 TopoLVM 配置 LVM Volume Groups
-configure_lvm: true # 是否在 Worker 節點配置 LVM
-lvm_volume_groups:
-  - name: "data-vg" # 資料儲存池 Volume Group 名稱 (資料磁盤)
-    devices: ["/dev/sdb"] # 資料磁盤 (ai: 400G, app: 200G)
-
-# 注意: 系統磁盤 (/dev/sda) 已分區，包含操作系統，不用於 LVM
-
-# ============================================
-# TopoLVM 配置
-# ============================================
-topolvm_values:
-  lvmd:
-    managed: true
-    deviceClasses:
-      - name: data
-        volume-group: data-vg
-        default: true
-        spare-gb: 10
 
 # ============================================
 # 部署控制變數

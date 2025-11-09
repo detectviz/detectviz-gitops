@@ -1,32 +1,21 @@
----
-# Root ArgoCD Application - 管理所有 ApplicationSets
-# 這是整個 GitOps 架構的入口點,負責載入所有環境的 ApplicationSets
+# Root Argo CD Application
+# This is the entry point for the entire GitOps structure.
+# It manages all ApplicationSets.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: root-argocd-app
+  name: root
   namespace: argocd
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
-  annotations:
-    argocd.argoproj.io/sync-wave: "-1" # 最高優先級
 spec:
-  project: platform-bootstrap
-
+  project: default
   source:
-    repoURL: git@github.com:detectviz/detectviz-gitops.git
-    targetRevision: main
-    path: appsets # 指向所有 ApplicationSet 清單
-
+    repoURL: 'git@github.com:detectviz/detectviz-gitops.git'
+    path: argocd/appsets
+    targetRevision: HEAD
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
-
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
-      allowEmpty: false
-    syncOptions:
-      - CreateNamespace=false # argocd 命名空間已存在
-      - ServerSideApply=true

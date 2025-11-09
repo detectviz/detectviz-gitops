@@ -1,0 +1,21 @@
+# This patch forces all ArgoCD components to be scheduled on the app-worker node
+# to align with the README.md architecture.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: all
+spec:
+  template:
+    spec:
+      nodeSelector:
+        node-role.kubernetes.io/workload-apps: "true"
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: all
+spec:
+  template:
+    spec:
+      nodeSelector:
+        node-role.kubernetes.io/workload-apps: "true"

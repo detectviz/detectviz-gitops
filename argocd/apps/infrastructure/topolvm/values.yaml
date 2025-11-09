@@ -1,0 +1,14 @@
+topolvm:
+  controller:
+    nodeSelector:
+      node-role.kubernetes.io/workload-apps: "true"
+  node:
+    nodeSelector:
+      node-role.kubernetes.io/workload-apps: "true"
+  storageClass:
+    create: true
+    storageClasses:
+      - name: topolvm-provisioner
+        default: true
+        volumeBindingMode: WaitForFirstConsumer
+        allowVolumeExpansion: true

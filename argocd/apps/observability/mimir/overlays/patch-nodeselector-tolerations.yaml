@@ -1,0 +1,34 @@
+# Generic Patch to force all Mimir pods to deploy on master-2
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: all
+spec:
+  template:
+    spec:
+      nodeSelector:
+        node-role.kubernetes.io/workload-mimir: "true"
+      tolerations:
+        - key: "node-role.kubernetes.io/control-plane"
+          operator: "Exists"
+          effect: "NoSchedule"
+        - key: "node-role.kubernetes.io/master"
+          operator: "Exists"
+          effect: "NoSchedule"
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: all
+spec:
+  template:
+    spec:
+      nodeSelector:
+        node-role.kubernetes.io/workload-mimir: "true"
+      tolerations:
+        - key: "node-role.kubernetes.io/control-plane"
+          operator: "Exists"
+          effect: "NoSchedule"
+        - key: "node-role.kubernetes.io/master"
+          operator: "Exists"
+          effect: "NoSchedule"

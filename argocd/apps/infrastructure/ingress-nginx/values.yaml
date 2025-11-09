@@ -1,0 +1,12 @@
+ingress-nginx:
+  controller:
+    kind: Deployment
+    nodeSelector:
+      node-role.kubernetes.io/workload-apps: "true"
+    service:
+      enabled: false
+    hostPort:
+      enabled: true
+      ports:
+        http: 80
+        https: 443
