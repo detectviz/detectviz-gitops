@@ -1,4 +1,5 @@
-# Patch to add tolerations to grafana-alloy DaemonSet
+# grafana-alloy 作為 DaemonSet 需要在所有節點上運行，包括 Master 節點
+# Master 節點預設有 Taint 阻止一般 Pod 調度，需要添加 tolerations 才能部署
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -7,9 +8,11 @@ spec:
   template:
     spec:
       tolerations:
+        # 容忍控制平面節點的 Taint (新版 K8s v1.24+)
         - key: "node-role.kubernetes.io/control-plane"
           operator: "Exists"
           effect: "NoSchedule"
+        # 容忍舊版 Master 節點的 Taint (舊版 K8s)
         - key: "node-role.kubernetes.io/master"
           operator: "Exists"
           effect: "NoSchedule"

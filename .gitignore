@@ -38,3 +38,5 @@ hosts-fragment.txt
 .specstory/**
 .cursorindexingignore
 terraform/terraform.tfvars
+
+keep

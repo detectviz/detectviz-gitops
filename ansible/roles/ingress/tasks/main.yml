@@ -23,7 +23,7 @@
 
 - name: 檢查集群狀態決定是否安裝 Ingress
   ansible.builtin.debug:
-    msg: "🔄 集群 API 服務器不可訪問，跳過 NGINX Ingress Controller 安裝（將在集群就緒後重試）"
+    msg: "集群 API 服務器不可訪問，跳過 NGINX Ingress Controller 安裝（將在集群就緒後重試）"
   when:
     - inventory_hostname == groups['masters'][0]
     - api_server_check.status is not defined or api_server_check.status != 200

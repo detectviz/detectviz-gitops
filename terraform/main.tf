@@ -296,7 +296,7 @@ resource "null_resource" "generate_ansible_inventory" {
     proxmox_virtual_environment_vm.k8s_workers,
   ]
 
-  # 生成 Ansible inventory 文件（符合 inventory.ini.example 格式）
+  # 生成 Ansible inventory 文件
   provisioner "local-exec" {
     command = <<-EOT
       mkdir -p ../ansible
@@ -332,7 +332,6 @@ control_plane_vip=${var.control_plane_vip}                    # 控制平面虛�
 EOF
       chmod 644 ../ansible/inventory.ini
       echo "✅ Ansible inventory 已生成: configuration/ansible/inventory.ini"
-      echo "   (格式符合 inventory.ini.example)"
       echo ""
       echo "📋 已自動設定的參數："
       echo "   ✓ kubernetes_version: ${var.kubernetes_version}"

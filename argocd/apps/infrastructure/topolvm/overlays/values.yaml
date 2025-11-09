@@ -1,8 +1,11 @@
+# TopoLVM Configuration for Local Storage
+# 根據 README.md 架構，TopoLVM Controller 部署到 app-worker 節點
+# Node 組件只在有儲存空間的 app-worker 節點上運行
 lvmd:
   managed: true
   socketName: /run/topolvm/lvmd.sock
   securityContext:
-    privileged: true
+    privileged: true # 需要特權模式來管理 LVM
 node:
   securityContext:
-    privileged: true
+    privileged: true # 需要特權模式來管理本地儲存
