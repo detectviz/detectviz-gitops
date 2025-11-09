@@ -4,6 +4,20 @@
 # 此角色負責準備所有 Kubernetes 節點的基礎環境
 # ============================================
 
+- name: 確保 qemu-guest-agent 已安裝
+  ansible.builtin.apt:
+    name: qemu-guest-agent
+    state: present
+    update_cache: yes
+  become: true
+
+- name: 確保 qemu-guest-agent 服務已啟用並啟動
+  ansible.builtin.systemd:
+    name: qemu-guest-agent
+    enabled: true
+    state: started
+  become: true
+
 # ============================================
 # 階段 1: 系統基礎設定
 # ============================================

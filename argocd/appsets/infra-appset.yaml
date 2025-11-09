@@ -1,0 +1,35 @@
+# ApplicationSet for P4 infrastructure applications
+# This ApplicationSet discovers all applications under the infrastructure path
+# and creates Argo CD applications for them.
+# It is configured for automatic synchronization.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: infra-appset
+  namespace: argocd
+spec:
+  generators:
+    - git:
+        repoURL: 'git@github.com:detectviz/detectviz-gitops.git'
+        revision: HEAD
+        directories:
+          - path: argocd/apps/infrastructure/*
+  template:
+    metadata:
+      name: '{{path.basename}}'
+      namespace: argocd
+    spec:
+      project: default
+      source:
+        repoURL: 'git@github.com:detectviz/detectviz-gitops.git'
+        targetRevision: HEAD
+        path: '{{path}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{path.basename}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true

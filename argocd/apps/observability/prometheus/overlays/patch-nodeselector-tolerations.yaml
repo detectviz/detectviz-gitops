@@ -1,0 +1,29 @@
+# Patch to force Prometheus deployment to master-1
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: prometheus-k8s
+spec:
+  template:
+    spec:
+      nodeSelector:
+        node-role.kubernetes.io/workload-monitoring: "true"
+      tolerations:
+        - key: "node-role.kubernetes.io/control-plane"
+          operator: "Exists"
+          effect: "NoSchedule"
+---
+# Patch for Alertmanager (if managed by Prometheus)
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: alertmanager-main
+spec:
+  template:
+    spec:
+      nodeSelector:
+        node-role.kubernetes.io/workload-monitoring: "true"
+      tolerations:
+        - key: "node-role.kubernetes.io/control-plane"
+          operator: "Exists"
+          effect: "NoSchedule"

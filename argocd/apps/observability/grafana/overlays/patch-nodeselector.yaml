@@ -1,0 +1,10 @@
+# Patch to force Grafana deployment to app-worker
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+spec:
+  template:
+    spec:
+      nodeSelector:
+        node-role.kubernetes.io/workload-apps: "true"

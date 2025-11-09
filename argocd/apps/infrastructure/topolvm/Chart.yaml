@@ -1,0 +1,8 @@
+apiVersion: v2
+name: topolvm-app
+version: 1.0.0
+description: "[P4] Deploys topolvm for detectviz local storage."
+dependencies:
+  - name: topolvm
+    version: "0.14.0"
+    repository: "https://topolvm.github.io/charts"
