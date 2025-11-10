@@ -1,0 +1,6 @@
+# Detectviz Platform - Network Role
+# 用途：配置多網路架構支援 Ceph 和 Kubernetes Overlay
+# 適用於：所有 Kubernetes 節點
+
+- name: Configure Network Interfaces for Multi-Network Support (配置網路介面以支援多網路架構)
+  ansible.builtin.include_tasks: configure-interfaces.yml

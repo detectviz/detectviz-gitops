@@ -24,8 +24,11 @@ proxmox_target_node = "proxmox"
 # 儲存池名稱 pvesh get /nodes/<NODE>/storage --output-format json | jq -r '.[].storage'
 proxmox_storage = "nvme-vm"
 
-# 網路橋接器 pvesh get /nodes/<NODE>/network --output-format json | jq -r '.[] | select(.type=="bridge") | .iface'
-proxmox_bridge = "vmbr0"
+# 網路橋接器配置（階段一：單網卡運作）
+# 檢查現有橋接器：pvesh get /nodes/<NODE>/network --output-format json | jq -r '.[] | select(.type=="bridge") | .iface'
+proxmox_bridge     = "vmbr0"  # 主網路橋接器 (管理網路) - 必須存在
+proxmox_mtu        = 9000     # 橋接器 MTU (支援巨型幀)
+k8s_overlay_bridge = "vmbr0"  # Kubernetes Overlay 網路橋接器 (階段一：同主網路)
 
 # ============================================
 # VM 模板配置

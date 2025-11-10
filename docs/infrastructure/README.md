@@ -10,15 +10,15 @@
 docs/infrastructure/
 ├── README.md                 # 本文件
 ├── proxmox/                  # Proxmox VE 虛擬化平台
-│   ├── installation.md       # Proxmox 安裝指南
-│   ├── configuration.md      # Proxmox 配置和優化
+│   ├── installation.md       # Proxmox 安裝與模板製作
+│   ├── configuration.md      # Proxmox 配置與認證設置
 │   └── vm-management.md      # VM 管理最佳實踐
 ├── hardware/                 # 硬體管理 (KVM/IPMI)
 │   ├── ipmi-setup.md         # IPMI/KVM 管理設置
 │   ├── bios-config.md        # BIOS 和硬體配置
 │   └── hardware-specs.md     # 硬體規格說明
 ├── networking/               # 網路配置
-│   ├── bridge-config.md      # Proxmox Bridge 配置
+│   ├── network-info.md       # 網路配置指南
 │   ├── dns-setup.md          # DNS 伺服器設置
 │   ├── network-optimization.md # 網路優化 (rp_filter等)
 │   └── domain-mapping.md     # 域名映射參考
@@ -28,6 +28,13 @@ docs/infrastructure/
 ```
 
 ## 職責劃分
+
+### 基礎設施即代碼 (`iac/`)
+涵蓋基礎設施自動化部署和管理：
+- **Terraform 規格**：平台標準化配置和最佳實踐
+- **Provider 配置**：Proxmox API 認證和權限管理
+- **狀態管理**：安全和版本控制實踐
+- **程式碼組織**：模組化設計和維護
 
 ### Proxmox 虛擬化平台 (`proxmox/`)
 專注於 Proxmox VE 的安裝、配置和虛擬機管理：
@@ -69,7 +76,7 @@ docs/infrastructure/
 2. [Proxmox 配置](proxmox/configuration.md)
 
 ### 3. 基礎設施配置階段
-1. [網路設置](networking/bridge-config.md)
+1. [網路設置](networking/network-info.md)
 2. [DNS 配置](networking/dns-setup.md)
 3. [儲存設置](storage/storage-setup.md)
 

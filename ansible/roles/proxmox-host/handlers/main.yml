@@ -1,3 +1,0 @@
----
-- name: reload pve sysctl
-  command: sysctl --system

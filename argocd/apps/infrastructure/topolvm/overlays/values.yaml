@@ -1,11 +1,35 @@
-# TopoLVM Configuration for Local Storage
-# 根據 README.md 架構，TopoLVM Controller 部署到 app-worker 節點
-# Node 組件只在有儲存空間的 app-worker 節點上運行
+# 說明: 覆寫 TopoLVM Helm Chart 的值
+# 1. 根據 README.md 架構，將 controller 和 node 都部署到 app-worker 節點。
+# 2. 包含 中為 LVM/儲存管理設定的特權模式。
+
+# --- 1. Controller (Deployment) 調度 ---
+controller:
+  # 部署到 app-worker 節點
+  nodeSelector:
+    node-role.kubernetes.io/workload-apps: "true"
+  # (Tolerations 由 controller-tolerations.yaml 處理)
+
+# --- 2. Node (DaemonSet) 調度與權限 ---
+node:
+  # 關鍵：由於儲存 (LVM) 只在 app-worker (VM-4) 上，
+  # Node DaemonSet 也必須只在該節點上運行。
+  nodeSelector:
+    node-role.kubernetes.io/workload-apps: "true"
+
+  # (來自你現有 values.yaml 的特權設定)
+  # 需要特權模式來管理本地儲存
+  securityContext:
+    privileged: true
+
+# --- 3. LVMD (LVM Daemon) 設定 ---
 lvmd:
+  # (來自你現有 values.yaml 的特權設定)
   managed: true
   socketName: /run/topolvm/lvmd.sock
+  # 需要特權模式來管理 LVM
   securityContext:
-    privileged: true # 需要特權模式來管理 LVM
-node:
-  securityContext:
-    privileged: true # 需要特權模式來管理本地儲存
+    privileged: true
+
+# --- 4. CertManager (來自你現有 values.yaml) ---
+certManager:
+  enabled: true

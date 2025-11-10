@@ -1,5 +1,5 @@
 # Detectviz Platform - Terraform 主配置
-# 用途：自動化在 Proxmox 上創建 5 台 VM（3 Master + 2 Worker）
+# 建立 4 台符合 README.md 規格 的 VM
 # 執行方式：terraform init && terraform apply -var-file=terraform.tfvars
 
 terraform {
@@ -21,9 +21,7 @@ provider "proxmox" {
   endpoint = var.proxmox_api_url
   insecure = var.proxmox_tls_insecure
 
-  # API Token 認證（推薦）
-  # 格式：token_id=token_secret
-  # 例如：terraform-prov@pve!terraform-token=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+  # API Token 認證
   api_token = var.proxmox_api_token_id != null && var.proxmox_api_token_secret != null ? "${var.proxmox_api_token_id}=${var.proxmox_api_token_secret}" : null
 
   # 或者直接使用變數（如果環境變數設定正確）
@@ -42,10 +40,12 @@ provider "proxmox" {
 resource "proxmox_virtual_environment_vm" "k8s_masters" {
   count = 3
 
-  name        = "vm-${count.index + 1}"
+  name        = var.master_hostnames[count.index]
   description = "Kubernetes Master Node ${count.index + 1}"
   node_name   = var.proxmox_target_node
   vm_id       = 111 + count.index
+  # 啟用 UEFI 模式，支援 Cloud-init 與新版 Ubuntu
+  bios = "ovmf"
 
   # Clone 配置
   clone {
@@ -80,13 +80,16 @@ resource "proxmox_virtual_environment_vm" "k8s_masters" {
     interface    = "scsi0"
     size         = parseint(replace(var.master_disk_size, "G", ""), 10)
     file_format  = "raw"
+    # 關閉磁碟複製以避免非叢集環境警告(proxmox 單節點叢集不支援磁碟複製)
+    replicate = false
   }
 
-  # 網路配置
+  # 網路配置 - 主網路 (管理網路 + Kubernetes Overlay)
   network_device {
     bridge  = var.proxmox_bridge
     model   = "virtio"
     enabled = true
+    mtu     = var.proxmox_mtu
   }
 
   # Serial 設備（支援 Web Console）
@@ -140,6 +143,8 @@ resource "proxmox_virtual_environment_vm" "k8s_workers" {
   description = "Kubernetes Application Worker Node"
   node_name   = var.proxmox_target_node
   vm_id       = 114
+  # 啟用 UEFI 模式，支援 Cloud-init 與新版 Ubuntu
+  bios = "ovmf"
 
   # Clone 配置
   clone {
@@ -174,13 +179,16 @@ resource "proxmox_virtual_environment_vm" "k8s_workers" {
     interface    = "scsi0"
     size         = parseint(replace(var.worker_system_disk_sizes[0], "G", ""), 10)
     file_format  = "raw"
+    # 關閉磁碟複製以避免非叢集環境警告(proxmox 單節點叢集不支援磁碟複製)
+    replicate = false
   }
 
-  # 網路配置
+  # 網路配置 - 主網路 (管理網路 + Kubernetes Overlay)
   network_device {
     bridge  = var.proxmox_bridge
     model   = "virtio"
     enabled = true
+    mtu     = var.proxmox_mtu
   }
 
   # Serial 設備（支援 Web Console）
@@ -238,7 +246,16 @@ resource "null_resource" "init_masters" {
     inline = [
       "sudo hostnamectl set-hostname ${var.master_hostnames[count.index]}.${var.domain}",
       "echo '127.0.0.1 ${var.master_hostnames[count.index]}.${var.domain} ${var.master_hostnames[count.index]}' | sudo tee -a /etc/hosts",
-      "echo 'VM ${var.master_hostnames[count.index]} 初始化完成'",
+      "# 配置網路 MTU",
+      "sudo tee /etc/netplan/50-custom-mtu.yaml > /dev/null <<EOF",
+      "network:",
+      "  version: 2",
+      "  ethernets:",
+      "    ens18:",
+      "      mtu: ${var.proxmox_mtu}",
+      "EOF",
+      "sudo netplan apply",
+      "echo 'VM ${var.master_hostnames[count.index]} 初始化完成，MTU 設定為 ${var.proxmox_mtu}'",
     ]
 
     connection {
@@ -252,7 +269,7 @@ resource "null_resource" "init_masters" {
 }
 
 resource "null_resource" "init_workers" {
-  count = 0
+  count = 1
 
   # VM 創建後執行
   depends_on = [proxmox_virtual_environment_vm.k8s_workers]
@@ -262,7 +279,16 @@ resource "null_resource" "init_workers" {
     inline = [
       "sudo hostnamectl set-hostname ${var.worker_hostnames[count.index]}.${var.domain}",
       "echo '127.0.0.1 ${var.worker_hostnames[count.index]}.${var.domain} ${var.worker_hostnames[count.index]}' | sudo tee -a /etc/hosts",
-      "echo 'VM ${var.worker_hostnames[count.index]} 初始化完成'",
+      "# 配置網路 MTU (主網路)",
+      "sudo tee /etc/netplan/50-custom-mtu.yaml > /dev/null <<EOF",
+      "network:",
+      "  version: 2",
+      "  ethernets:",
+      "    ens18:",
+      "      mtu: ${var.proxmox_mtu}",
+      "EOF",
+      "sudo netplan apply",
+      "echo 'VM ${var.worker_hostnames[count.index]} 初始化完成，MTU 設定為 ${var.proxmox_mtu}'",
     ]
 
     connection {
@@ -296,13 +322,12 @@ resource "null_resource" "generate_ansible_inventory" {
 # ============================================
 # 自動生成於：$(date)
 # 此檔案由 Terraform 自動產生，請勿手動編輯
-# 對應文檔：deployment/02-ansible.md
 
 # Master 節點組 - 控制平面節點，提供 Kubernetes API Server、Scheduler、Controller Manager
 [masters]
 ${join("\n", [for i, ip in var.master_ips : "${var.master_hostnames[i]} ansible_host=${ip} ansible_user=${var.vm_user} ansible_ssh_private_key_file=${var.ssh_private_key_path}  # ${var.master_hostnames[i]}.${var.domain}"])}
 
-# Worker 節點組 - 工作節點，用於運行應用 Pod
+# Worker 節點組 - 工作節點，用於運行應用 Pod、Ceph OSD、Kubernetes Overlay
 [workers]
 ${join("\n", [for i, ip in var.worker_ips : "${var.worker_hostnames[i]} ansible_host=${ip} ansible_user=${var.vm_user} ansible_ssh_private_key_file=${var.ssh_private_key_path}      # ${var.worker_hostnames[i]}.${var.domain}"])}
 
@@ -315,20 +340,32 @@ workers    # 引用 workers 組
 [k8s_cluster:vars]
 ansible_python_interpreter=/usr/bin/python3
 kubernetes_version=${var.kubernetes_version}                         # Kubernetes 版本號
-pod_network_cidr=${var.pod_network_cidr}                    # Pod 網路 CIDR
-service_cidr=${var.service_cidr}                         # Service 網路 CIDR
+pod_network_cidr=${var.pod_network_cidr}    # Pod 網路 CIDR
+service_cidr=${var.service_cidr}            # Service 網路 CIDR
 control_plane_vip=${var.control_plane_vip}                    # 控制平面虛擬 IP，用於負載均衡
+
+# 網路配置
+network_mtu=${var.proxmox_mtu}                              # 網路 MTU (支援巨型幀)
+k8s_overlay_bridge=${var.k8s_overlay_bridge}                # Kubernetes Overlay 網路橋接器
+
+# 網路介面對應 (virtio 網路設備順序)
+# ens18: 主網路 (管理網路 + Kubernetes Overlay) - 所有節點
 EOF
       chmod 644 ../ansible/inventory.ini
-      echo "✅ Ansible inventory 已生成: configuration/ansible/inventory.ini"
+      echo "[✓] Ansible inventory 已生成: /ansible/inventory.ini"
       echo ""
-      echo "📋 已自動設定的參數："
-      echo "   ✓ kubernetes_version: ${var.kubernetes_version}"
-      echo "   ✓ control_plane_vip: ${var.control_plane_vip}"
-      echo "   ✓ pod_network_cidr: ${var.pod_network_cidr}"
-      echo "   ✓ service_cidr: ${var.service_cidr}"
+      echo "已自動設定的參數："
+      echo "[✓] kubernetes_version: ${var.kubernetes_version}"
+      echo "[✓] control_plane_vip: ${var.control_plane_vip}"
+      echo "[✓] pod_network_cidr: ${var.pod_network_cidr}"
+      echo "[✓] service_cidr: ${var.service_cidr}"
+      echo "[✓] network_mtu: ${var.proxmox_mtu}"
+      echo "[✓] k8s_overlay_bridge: ${var.k8s_overlay_bridge}"
       echo ""
-      echo "📝 如需調整，請編輯 configuration/ansible/inventory.ini 的 [k8s_cluster:vars] 區段"
+      echo "網路介面配置："
+      echo "  ens18: 主網路 (管理網路 + Kubernetes Overlay) - 所有節點"
+      echo ""
+      echo "如需調整，請編輯 /ansible/inventory.ini 的 [k8s_cluster:vars] 區段"
     EOT
   }
 
@@ -342,10 +379,10 @@ ${join("\n", [for i, ip in var.master_ips : "${ip} ${var.master_hostnames[i]}.${
 ${join("\n", [for i, ip in var.worker_ips : "${ip} ${var.worker_hostnames[i]}.${var.domain} ${var.worker_hostnames[i]}"])}
 ${var.control_plane_vip} k8s-api.${var.domain} k8s-api
 EOF
-      echo "✅ Hosts 片段已生成: hosts-fragment.txt"
+      echo "[✓] Hosts 片段已生成: hosts-fragment.txt"
       echo "   (位於專案根目錄)"
       echo ""
-      echo "📝 請將以下內容加入內部 DNS 或本地 /etc/hosts："
+      echo "請將以下內容加入內部 DNS 或本地 /etc/hosts："
       cat ../../hosts-fragment.txt
     EOT
   }
@@ -390,7 +427,7 @@ output "next_steps" {
   value       = <<-EOT
 
   ========================================
-  ✅ Terraform 部署完成！
+  [✓] Terraform 部署完成！
   ========================================
 
   下一步操作：
@@ -406,7 +443,7 @@ output "next_steps" {
      ansible-playbook -i inventory.ini init-nodes.yml
 
   4. 初始化 Kubernetes 叢集：
-     請參考 deployment.md Phase 2 步驟
+     請參考 README.md 步驟
 
   EOT
 }

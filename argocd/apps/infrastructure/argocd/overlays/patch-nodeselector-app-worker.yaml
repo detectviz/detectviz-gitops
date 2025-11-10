@@ -1,7 +1,7 @@
-# This patch forces all ArgoCD components to be scheduled on the app-worker node
-# to align with the README.md architecture.
+# 這個 patch 為所有 ArgoCD 元件強制指定 nodeSelector
+# 以符合 README.md 的架構
 apiVersion: apps/v1
-kind: Deployment
+kind: Deployment # 將被 Kustomize 套用到所有 Deployment 資源
 metadata:
   name: all
 spec:
@@ -11,7 +11,7 @@ spec:
         node-role.kubernetes.io/workload-apps: "true"
 ---
 apiVersion: apps/v1
-kind: StatefulSet
+kind: StatefulSet # 將被 Kustomize 套用到所有 StatefulSet 資源
 metadata:
   name: all
 spec:

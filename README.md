@@ -92,6 +92,8 @@ detectviz-gitops/
 │   ├── cluster-resources/     # Namespaces + 證書 + 擴展
 │   └── README.md
 ├── apps/
+│   ├── identity/
+│   │   └── ...
 │   ├── infrastructure/
 │   │   ├── argocd/            # ArgoCD namespace-level 資源
 │   │   └── ...
@@ -100,82 +102,85 @@ detectviz-gitops/
 ├── appsets/                       # ApplicationSets
 │   ├── argocd-bootstrap-app.yaml  # ArgoCD + 集群資源引導
 │   ├── infra-appset.yaml          # detectviz-apps/infra/
-│   └── apps-appset.yaml  # detectviz-apps/apps/
+│   └── apps-appset.yaml           # detectviz-apps/apps/
 ├── root-argocd-app.yaml           # App-of-Apps
 └── README.md
 ```
 
-## 前置作業（手動初始化）
+## 前置作業（一次性手動設置）
 
-以下步驟僅需執行一次，作為 Detectviz 平台初始建置前的準備作業：
+以下為 Detectviz 平台初始建置前的必要準備作業：
 
-### 1. SSH Key 建立與發佈
-- `ssh-key.pub`：供 Terraform 建立 VM 時注入
-- 對應公鑰應發佈至 Cloud-Init 模板與 Proxmox VM User
+### 🔐 安全性設置
 
-### 2. Proxmox 基礎資訊定義
-- `proxmox_host`: 192.168.0.X
-- `api_token_id` / `api_token_secret`
-- `node_name`: pve
-- `template_name`: ubuntu-2204-template
-- 設定方式可透過 `terraform.tfvars` 或 `proxmox.auto.tfvars` 管理
+#### 1. SSH 金鑰建立與發佈
+- 產生 SSH 金鑰對：`ssh-keygen -t rsa -b 4096`
+- 公鑰將由 Terraform 注入至 VM 的 Cloud-Init 配置
 
-### 3. Proxmox Ubuntu Template 製作
-- 需事先匯入 Ubuntu 22.04 Cloud Image（img/iso 皆可）
-- 啟用 Cloud-Init 模式，設定：
-  - Serial Console 開啟
-  - Network Interface 使用 VirtIO + Bridge 指定 vmbr0
-  - 安裝 `qemu-guest-agent`
-  - 開機後自動啟用 `cloud-init`
+#### 2. Secrets 管理規劃
+| 類型 | 來源 | 儲存位置 |
+|------|------|----------|
+| Vault Root Token | `vault operator init` | Bitwarden / 1Password |
+| Argo CD Admin 密碼 | `argocd-initial-admin-secret` | `secrets/argocd.md` |
+| Terraform 變數 | `terraform.tfvars` | 本地 `.secrets/` 目錄 |
+| SSH 私鑰 | `~/.ssh/id_rsa` | 本機（勿入 Git） |
 
-### 4. Kubectl 與 Kubeconfig 憑證備妥
-- 用於驗證控制平面是否正常初始化
-- 可由 Ansible 安裝後的 `~/.kube/config` 匯出
-- 建議 kubectl 備份至安全路徑並供後續 `argocd login` 使用
+### 🖥️ Proxmox 環境準備
 
-### 5. Secrets 管理建議
-| 類型 | 來源 | 建議儲存方式 |
-|------|------|--------------|
-| Vault Root Token | 初始 `vault operator init` | 使用 Bitwarden / 1Password |
-| Argo CD Admin 初始密碼 | `argocd-initial-admin-secret` | 記錄於 secrets/argocd.md |
-| Terraform Variables | proxmox.tfvars / secrets.auto.tfvars | 僅儲存在本地 `.secrets` 資料夾並加 .gitignore |
-| SSH Key | `~/.ssh/id_rsa` | 僅儲存於本機，用於 Ansible SSH |
+#### 3. Proxmox 基礎配置
+- **主機 IP**: 192.168.0.2
+- **API Token**: 生成並記錄 Token ID/Secret
+- **節點名稱**: proxmox
+- **Ubuntu 模板**: ubuntu-2204-template
+
+#### 4. Ubuntu Cloud-Init 模板
+- 匯入 Ubuntu 22.04 Cloud Image
+- 啟用 Cloud-Init 並設定：
+  - Serial Console 啟用
+  - VirtIO 網路介面 + vmbr0 橋接器
+  - 安裝 qemu-guest-agent
+  - Cloud-Init 自動啟動
+
+### 🌐 網路配置
+
+#### 5. Proxmox Host 網路設定
+參考：`docs/infrastructure/networking/network-info.md`
+
+### 🛠️ 可選工具準備
+
+#### 6. 本機工具安裝
+- kubectl (Kubernetes CLI)
+- helm (包管理工具)
+- argocd CLI (GitOps 操作)
+
+#### 7. DNS Provider 設定（如使用外部域名）
+- Cloudflare API Token (zone:edit 權限)
+- 記錄於 `secrets/cert-manager.md`
 
 > [!IMPORTANT]
-> 上述設定屬於平台初始化基礎建置，需手動建立與驗證。請勿納入 Git 版本控管，建議集中記錄於 `/secrets/` 或 `/bootstrap/manual/` 區段並備有內部指引。
-
-### 6. Cloudflare DNS API Key 建立（如使用 Cloudflare 為 DNS Provider）
-- 可用於 cert-manager DNS-01 驗證自動化
-- 建議產出 API Token 並限制於 zone:edit 權限
-- 記錄於 secrets/cert-manager.md 中（勿納入 Git）
-
-### 7. Argo CD 登入與 token 產製
-- 完成 `argocd login` 後可產出 access token，供 GitOps 或 CI/CD 使用
-- 建議儲存於 secrets/argocd-token.md 並加入 .gitignore
+> 上述設定為一次性初始化作業。敏感資訊請勿提交至 Git 版本控管。
 
 ## 部署流程摘要
-1. Terraform → 建立 VM，並輸出 IP 與資源配置
-2. Terraform output → 提供初始化資訊給 Ansible
-3. 執行中介腳本進行環境檢查與補強：
-   > [!TIP]
-   > 初始化補強腳本已收錄於 `scripts/` 目錄，包含：
-   > - `scripts/health-check.sh`：節點通訊健康檢查
-   > - `scripts/render-node-labels.sh`：根據 VM metadata 渲染節點標籤與 inventory
-   > - `scripts/validation-check.sh`：驗證初始化一致性
-   > - `scripts/enable-qemu-guest-agent.sh`：安裝與啟用 qemu-guest-agent
-4. Ansible → 安裝 Kubernetes 並初始化控制平面與 CNI 網路
-5. Argo CD → 啟動 GitOps  
-6. Helm → 部署應用。  
-（所有應用集中於 app-worker，簡化節點分佈並利於展示追蹤）
 
-## [P1] Terraform VM 建立清單
-Terraform 管理以下虛擬機資源建立，並透過 Cloud-Init 設定初始化資訊，供後續 Ansible 接手：
-| VM | Hostname | IP | Role | Resources |
-|----|----------|----|------|-----------|
-| VM-1 | master-1 | 192.168.0.11 | Control Plane | 4C / 8GB / 100GB |
-| VM-2 | master-2 | 192.168.0.12 | Control Plane | 3C / 8GB / 100GB |
-| VM-3 | master-3 | 192.168.0.13 | Control Plane | 3C / 8GB / 100GB |
-| VM-4 | app-worker | 192.168.0.14 | Application Node | 12C / 24GB / 320GB |
+```mermaid
+graph TD
+    A[前置作業] --> B[Terraform VM 建立]
+    B --> C[Ansible Kubernetes 安裝]
+    C --> D[Argo CD GitOps]
+    D --> E[Helm 應用部署]
+```
+
+### 階段詳解
+
+1. **前置作業** - SSH 金鑰、網路配置、Ubuntu 模板準備
+2. **Terraform** → 建立 4 個 VM 節點並配置網路
+3. **Ansible** → 安裝 Kubernetes、Calico CNI、初始化控制平面
+4. **Argo CD** → 啟動 GitOps 控制面
+5. **Helm** → 部署所有基礎設施與應用服務
+
+> [!TIP]
+> 所有應用服務集中部署在單一 app-worker 節點，便於展示和維護
+
 
 ## 最佳化建議檢查清單 (持續更新中)
 - [ ] Root Application 與 ApplicationSet 為 `Synced`/`Healthy`
@@ -185,24 +190,23 @@ Terraform 管理以下虛擬機資源建立，並透過 Cloud-Init 設定初始�
 - [ ] 所有 `targetRevision` 皆固定為 `main`，禁止使用 `HEAD` 造成不可預期的 commit 漂移。
 - [ ] Secret 類資源均透過外掛 ESO 同步代理 Vault 中授權的機密到 Pod 可使用的 Kubernetes Secret，無明文憑證。
 
-## Master Node 配置
-| VM | Hostname | IP | Role | Resources | Workload |
-| --- | --- | --- | --- | --- | --- |
-| VM-1 | master-1 | 192.168.0.11 | Control Plane | 4C/8GB/100GB | API Server + ETCD + Prometheus |
-| VM-2 | master-2 | 192.168.0.12 | Control Plane | 3C/8GB/100GB | API Server + ETCD + Mimir |
-| VM-3 | master-3 | 192.168.0.13 | Control Plane | 3C/8GB/100GB | API Server + ETCD + Loki |
+## 集群架構與資源配置
 
-## Worker Node 配置
-展示場景下，將所有應用工作負載集中於 VM-4，簡化部署並強化可視化整體性，利於 GitOps + Observability 堆疊展示。
+### 節點配置總覽
 
-| VM | Hostname | IP | Role | Resources | Workload |
-| --- | --- | --- | --- | --- | --- |
-| VM-4 | app-worker | 192.168.0.14 | Application | 12C/24GB/320GB | Argo CD, Keycloak, Grafana, Tempo, PostgreSQL, Vault（集中於單節點以便展示） |
+| 節點 | Hostname | IP | Role | CPU | 記憶體 | 磁碟 | 主要工作負載 |
+|------|----------|----|------|-----|--------|------|--------------|
+| **VM-1** | master-1 | 192.168.0.11 | Control Plane | 4 cores | 8 GB | 100 GB | API Server + ETCD + Prometheus |
+| **VM-2** | master-2 | 192.168.0.12 | Control Plane | 3 cores | 8 GB | 100 GB | API Server + ETCD + Mimir |
+| **VM-3** | master-3 | 192.168.0.13 | Control Plane | 3 cores | 8 GB | 100 GB | API Server + ETCD + Loki |
+| **VM-4** | app-worker | 192.168.0.14 | Application | 12 cores | 24 GB | 320 GB | Argo CD, Keycloak, Grafana, Tempo, PostgreSQL, Vault |
 
-## Storage Configuration
-- **VM-1/2/3**: 100GB (OS + etcd)
-- **VM-4**: 320GB (Application data)
+### 設計說明
 
+- **Control Plane**: 3 節點 HA 架構，分散監控元件 (Prometheus/Mimir/Loki)
+- **Application Node**: 單一節點集中部署所有應用服務，便於展示和維護
+- **Storage**: Master 節點 100GB (OS + etcd)，Worker 節點 320GB (應用資料)
+- **總資源**: 22 CPU cores, 48 GB RAM, 620 GB 儲存空間
 
 ## 網域規劃
 本網域配置設計目的是展示平台整合能力，並將各功能區分子網域以供瀏覽與示範使用。
@@ -222,7 +226,6 @@ Terraform 管理以下虛擬機資源建立，並透過 Cloud-Init 設定初始�
 - **Service CIDR**: 10.96.0.0/12
 - **CNI**: Calico with NetworkPolicy enforcement
 
-
 ### Service Ports
 | Service | Port | Protocol | Purpose |
 | --- | --- | --- | --- |
@@ -236,9 +239,15 @@ Terraform 管理以下虛擬機資源建立，並透過 Cloud-Init 設定初始�
 > [!NOTE]
 > 本配置為單叢集設計，可擴展至多叢集環境，並支援 staging/production overlay。
 
-
 ## 硬體規格
-- 處理器：Intel(R) Core(TM) i7-14700F, 20 Core(s), 28 Logical Processors(s)
-- 記憶體：D5-6000-32GB * 2
-- 硬碟：TEAM TM8FPW002T 2048GB (NVMe) + Acer SSD RE100 2.5 512GB (SATA)
-- 網卡：Intel I210-AT
+
+- **處理器**: Intel(R) Core(TM) i7-14700F, 20 Core(s), 28 Logical Processors(s)
+- **記憶體**: D5-6000-32GB × 2 (64 GB total)
+- **儲存**: TEAM TM8FPW002T 2048GB (NVMe) + Acer SSD RE100 2.5 512GB (SATA)
+- **網路**: Intel I210-AT (支援 1Gbps)
+
+### VM 資源分配
+
+- **VM ID 範圍**: 111~114 (master-1 ~ app-worker)
+- **域名**: `*.detectviz.internal`
+- **網路橋接器**: vmbr0 (MTU 9000)

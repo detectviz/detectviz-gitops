@@ -3,7 +3,14 @@
 # 用於初始化 Detectviz Kubernetes 集群
 # ============================================
 
-# Kubeadm API 版本 - 使用 v1beta4（Kubernetes 1.32.0）
+# InitConfiguration - 初始化配置
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: InitConfiguration
+nodeRegistration:
+  criSocket: "unix:///var/run/containerd/containerd.sock" # 指定容器運行時套接字
+
+---
+# ClusterConfiguration - 集群配置
 apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
 
@@ -39,7 +46,7 @@ apiServer:
     - name: service-account-signing-key-file
       value: /etc/kubernetes/pki/sa.key                   # Service Account 簽名金鑰文件
     - name: enable-admission-plugins
-      value: NodeRestriction,PodSecurity                  # 啟用的准入控制器插件
+      value: NodeRestriction                              # 簡化准入插件，避免配置問題
 
 ---
 # ============================================

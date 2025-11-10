@@ -7,7 +7,7 @@
 # LVM 配置 (為 TopoLVM 準備儲存)
 # ============================================
 
-- name: 安裝 LVM 工具 (若尚未安裝)
+- name: Install LVM tools if not already installed (安裝 LVM 工具 (若尚未安裝))
   ansible.builtin.apt:
     name: lvm2
     state: present
@@ -16,7 +16,7 @@
   tags:
     - lvm
 
-- name: 檢查 Worker VM 磁碟配置
+- name: Check Worker VM disk configuration (檢查 Worker VM 磁碟配置)
   ansible.builtin.shell: |
     echo "=== 磁碟設備列表 ==="
     lsblk -d -o NAME,SIZE,TYPE,MODEL
@@ -29,7 +29,7 @@
   tags:
     - lvm
 
-- name: 顯示磁碟配置信息
+- name: Display disk configuration information (顯示磁碟配置信息)
   ansible.builtin.debug:
     msg: |
       === {{ inventory_hostname }} 磁碟配置 ===
@@ -38,7 +38,7 @@
   tags:
     - lvm
 
-- name: 驗證 LVM 配置設備存在
+- name: Verify LVM configuration devices exist (驗證 LVM 配置設備存在)
   ansible.builtin.shell: |
     for device in {{ lvm_volume_groups | selectattr('devices', 'defined') | map(attribute='devices') | flatten | unique | join(' ') }}; do
       if [ ! -b "$device" ]; then
@@ -57,14 +57,14 @@
   tags:
     - lvm
 
-- name: 顯示設備檢查結果
+- name: Display device check results (顯示設備檢查結果)
   ansible.builtin.debug:
     msg: "設備檢查: {{ device_check.stdout }}"
   when: configure_lvm | bool
   tags:
     - lvm
 
-- name: 停止使用中的 LVM 設備 (如果需要)
+- name: Stop active LVM devices if needed (停止使用中的 LVM 設備 (如果需要))
   ansible.builtin.shell: |
     for device in {{ lvm_volume_groups | selectattr('devices', 'defined') | map(attribute='devices') | flatten | unique | join(' ') }}; do
       # 檢查設備是否已被 LVM 使用
@@ -80,7 +80,7 @@
   tags:
     - lvm
 
-- name: 為 LVM Volume Groups 創建物理卷
+- name: Create physical volumes for LVM Volume Groups (為 LVM Volume Groups 創建物理卷)
   ansible.builtin.command: "pvcreate --force --yes {{ item }}"
   loop: "{{ lvm_volume_groups | selectattr('devices', 'defined') | map(attribute='devices') | flatten | unique }}"
   when: configure_lvm | bool
@@ -89,7 +89,7 @@
   tags:
     - lvm
 
-- name: 顯示 PV 創建結果
+- name: Display PV creation results (顯示 PV 創建結果)
   ansible.builtin.debug:
     msg: "PV 創建結果: {{ item.item }} - {{ item.rc == 0 | ternary('成功', '跳過(已存在)') }}"
   loop: "{{ pv_create_result.results | default([]) }}"
@@ -97,7 +97,7 @@
   tags:
     - lvm
 
-- name: 創建 LVM Volume Groups
+- name: Create LVM Volume Groups (創建 LVM Volume Groups)
   ansible.builtin.command: "vgcreate {{ item.name }} {{ item.devices | join(' ') }}"
   loop: "{{ lvm_volume_groups }}"
   when: configure_lvm | bool
@@ -106,7 +106,7 @@
   tags:
     - lvm
 
-- name: 顯示 VG 創建結果
+- name: Display VG creation results (顯示 VG 創建結果)
   ansible.builtin.debug:
     msg: "VG 創建結果: {{ item.item.name }} - {{ item.rc == 0 | ternary('成功', '跳過(已存在)') }}"
   loop: "{{ vg_create_result.results | default([]) }}"
@@ -114,7 +114,7 @@
   tags:
     - lvm
 
-- name: 驗證 LVM Volume Groups
+- name: Verify LVM Volume Groups (驗證 LVM Volume Groups)
   ansible.builtin.command: vgs --units g --noheadings -o vg_name,vg_size,vg_free
   register: vgs_output
   when: configure_lvm | bool
@@ -122,7 +122,7 @@
   tags:
     - lvm
 
-- name: 驗證 LVM Physical Volumes
+- name: Verify LVM Physical Volumes (驗證 LVM Physical Volumes)
   ansible.builtin.command: pvs --units g --noheadings -o pv_name,pv_size,pv_free,vg_name
   register: pvs_output
   when: configure_lvm | bool
@@ -130,7 +130,7 @@
   tags:
     - lvm
 
-- name: 顯示 LVM 配置結果
+- name: Display LVM configuration results (顯示 LVM 配置結果)
   ansible.builtin.debug:
     msg: |
       === {{ inventory_hostname }} LVM 配置完成 ===
@@ -151,13 +151,13 @@
 # ============================================
 
 # 檢查節點是否已經加入集群（初步檢查）
-- name: 檢查節點是否已加入集群（初步檢查）
+- name: Check if node is already joined to cluster (preliminary check) (檢查節點是否已加入集群（初步檢查）)
   ansible.builtin.stat:
     path: /etc/kubernetes/kubelet.conf
   register: kubelet_conf_initial
 
 # 強制重置（如請求且已加入）
-- name: 強制重置節點（如需要且已加入）
+- name: Force reset node if needed and already joined (強制重置節點（如需要且已加入）)
   ansible.builtin.command: kubeadm reset --force
   when:
     - force_rejoin | bool
@@ -167,7 +167,7 @@
     - reset
 
 # 確保 containerd 重新啟動（kubeadm reset 會停止它）
-- name: 確保 containerd 在重置後正常運行
+- name: Ensure containerd runs normally after reset (確保 containerd 在重置後正常運行)
   ansible.builtin.systemd:
     name: containerd
     state: started
@@ -175,7 +175,7 @@
   when: force_rejoin | bool
 
 # 清理配置用於強制重新加入
-- name: 清理配置以進行強制重新加入
+- name: Clean up configuration for forced rejoin (清理配置以進行強制重新加入)
   ansible.builtin.file:
     path: "{{ item }}"
     state: absent
@@ -191,13 +191,13 @@
     - reset
 
 # 最終檢查節點狀態（在所有清理操作後）
-- name: 最終檢查節點狀態（所有清理操作完成後）
+- name: Final check node status (after all cleanup operations) (最終檢查節點狀態（所有清理操作完成後）)
   ansible.builtin.stat:
     path: /etc/kubernetes/kubelet.conf
   register: kubelet_conf_final
 
 # 等待 API server 就緒
-- name: 等待 API Server 就緒
+- name: Wait for API Server to be ready (等待 API Server 就緒)
   ansible.builtin.uri:
     url: "https://{{ control_plane_endpoint }}/healthz"
     validate_certs: false

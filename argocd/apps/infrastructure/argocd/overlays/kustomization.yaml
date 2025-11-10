@@ -1,10 +1,12 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+# 引用 base HA 設定
 resources:
   - ../base
 
+# 確保所有 ArgoCD 元件都部署在 app-worker 節點
 patches:
   - path: patch-nodeselector-app-worker.yaml
     target:
-      kind: (Deployment|StatefulSet)
+      kind: (Deployment|StatefulSet) # 套用到所有 Pod 控制器

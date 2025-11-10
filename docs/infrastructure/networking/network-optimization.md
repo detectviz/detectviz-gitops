@@ -6,6 +6,8 @@
 
 ## rp_filter 設置
 
+[Proxmox 修改 rp_filter 設定](https://pve.proxmox.com/pve-docs/chapter-pvesdn.html#_multiple_evpn_exit_nodes)
+
 ### 問題描述
 在 KVM/Bridge/Tap 網路環境中，可能會遇到 ICMP Reply 封包遺失的問題。這是因為 Linux 的反向路徑過濾 (Reverse Path Filtering) 機制。
 
@@ -16,10 +18,8 @@
 
 #### 1. 建立設定檔
 ```bash
-cat << EOF | sudo tee /etc/sysctl.d/98-pve-networking.conf
-# 修正 Proxmox KVM/Bridge/Tap 網路封包遺失 (ICMP Reply)
-# 將 rp_filter 設為 1 (Loose Mode) 以允許橋接的非對稱路由
-# 這是解決 ICMP 封包被 tap 介面丟棄的關鍵
+cat <<EOF | tee /etc/sysctl.conf
+# 覆蓋 PVE Firewall 的 rp_filter 設定，允許橋接非對稱路由
 net.ipv4.conf.all.rp_filter = 1
 net.ipv4.conf.default.rp_filter = 1
 EOF
@@ -27,7 +27,7 @@ EOF
 
 #### 2. 立即載入設定
 ```bash
-sudo sysctl --system
+sysctl --system
 ```
 
 #### 3. 驗證設置
@@ -128,22 +128,72 @@ echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables
 ### Jumbo Frame 配置
 ```bash
 # 檢查當前 MTU
+```bash
 ip link show vmbr0
+```
+```bash
+# 輸出結果
+5: vmbr0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP mode DEFAULT group default qlen 1000
+    link/ether bc:fc:e7:3b:ff:4c brd ff:ff:ff:ff:ff:ff
+```
+>  表示 Proxmox 主機的 bridge vmbr0 MTU 為 1500
 
-# 設置 Jumbo Frame (9000)
-ip link set vmbr0 mtu 9000
+# 設置 Jumbo Frame (9000) 
+適用於 Kubernetes Pod Overlay（Flannel/VXLAN）網路傳輸
+
+```bash
+ip link set dev vmbr0 mtu 9000
+ip link show vmbr0
+```
+```bash
+# 輸出結果
+5: vmbr0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 9000 qdisc noqueue state UP mode DEFAULT group default qlen 1000
+    link/ether bc:fc:e7:3b:ff:4c brd ff:ff:ff:ff:ff:ff
+```
+>  表示 Proxmox 主機的 bridge vmbr0 MTU 為 9000
 
 # 永久設置
-echo "auto vmbr0
+若確認無誤後，寫入 `/etc/network/interfaces` 永久生效：
+
+```yaml
+# /etc/network/interfaces
+auto lo
+iface lo inet loopback
+
+iface enp4s0 inet manual
+iface enp5s0 inet manual
+iface enx36fe0bfce7d0 inet manual
+
+auto vmbr0
 iface vmbr0 inet static
-    ...
-    mtu 9000" >> /etc/network/interfaces
+	address 192.168.0.2/24
+	gateway 192.168.0.1
+	bridge-ports enp4s0
+	bridge-stp off
+	bridge-fd 0
+  mtu 9000 # 適用於 Kubernetes Pod Overlay（Flannel/VXLAN）網路傳輸
+
+source /etc/network/interfaces.d/*
+```
+重啟網路服務：
+```bash
+systemctl restart networking
 ```
 
 ### VM MTU 配置
-在 VM 中設置匹配的 MTU：
+
+1. VM 內部網卡（virtio）也必須設定對應的 Jumbo Frame MTU：
 ```bash
 ip link set eth0 mtu 9000
+```
+[!NOTE]
+>   所有節點與交換機必須支援 9000 MTU，否則封包會被丟棄。
+
+2. 若使用 Kubernetes Overlay（如 Flannel），需確保底層 MTU 減去 50 bytes 封裝開銷，例如：
+```yaml
+kube-flannel.yaml 中設定：
+- --iface=eth0
+- --mtu=8950
 ```
 
 ## 網路故障排除

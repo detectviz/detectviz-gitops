@@ -1,9 +1,6 @@
 # ApplicationSet for P5 applications
-# This ApplicationSet discovers all applications under the observability and identity paths
-# and creates Argo CD applications for them.
-# The sync policy is set to manual to allow for manual intervention (e.g., Vault unsealing)
-# before the applications are deployed.
-apiVersion: argoproj.io/v1alpha1
+# 使用 Git Generator 偵測 argocd/apps/observability/* 和 argocd/apps/identity/*。
+# syncPolicy 必須是 syncPolicy: {} (手動)，以建立 Vault 初始化的「手動閘門」。
 kind: ApplicationSet
 metadata:
   name: apps-appset
@@ -11,22 +8,22 @@ metadata:
 spec:
   generators:
     - git:
-        repoURL: 'git@github.com:detectviz/detectviz-gitops.git'
+        repoURL: "git@github.com:detectviz/detectviz-gitops.git"
         revision: HEAD
         directories:
           - path: argocd/apps/observability/*
           - path: argocd/apps/identity/*
   template:
     metadata:
-      name: '{{path.basename}}'
+      name: "{{path.basename}}"
       namespace: argocd
     spec:
       project: default
       source:
-        repoURL: 'git@github.com:detectviz/detectviz-gitops.git'
+        repoURL: "git@github.com:detectviz/detectviz-gitops.git"
         targetRevision: HEAD
-        path: '{{path}}'
+        path: "{{path}}"
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{path.basename}}'
-      syncPolicy: {}
+        namespace: "{{path.basename}}"
+      syncPolicy: {} # 手動同步

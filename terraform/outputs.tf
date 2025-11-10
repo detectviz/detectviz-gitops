@@ -115,7 +115,7 @@ output "hosts_fragment" {
 # Detectviz Platform Hosts (自動生成)
 ${join("\n", [for i, ip in var.master_ips : "${ip} ${var.master_hostnames[i]}.${var.domain} ${var.master_hostnames[i]}"])}
 ${join("\n", [for i, ip in var.worker_ips : "${ip} ${var.worker_hostnames[i]}.${var.domain} ${var.worker_hostnames[i]}"])}
-${var.control_plane_vip} vip.${var.domain} vip
+${var.control_plane_vip} k8s-api.${var.domain} k8s-api
 EOT
 }
 

@@ -1,0 +1,51 @@
+# Configure Network Interfaces for Single-Network Architecture (Phase 1)
+# 配置網路介面以支援單網路架構 (管理網路 + Kubernetes Overlay)
+
+- name: Ensure network configuration directory exists (確保網路配置目錄存在)
+  ansible.builtin.file:
+    path: /etc/netplan
+    state: directory
+  become: true
+
+- name: Configure network interfaces with correct MTU (配置網路介面並設定正確的 MTU)
+  ansible.builtin.template:
+    src: network-config.yaml.j2
+    dest: /etc/netplan/50-detectviz-network.yaml
+    mode: "0644"
+  become: true
+  vars:
+    network_mtu: "{{ network_mtu | default(1500) }}"
+
+- name: Apply network configuration (應用網路配置)
+  ansible.builtin.command: netplan apply
+  become: true
+  changed_when: false
+
+- name: Set MTU for network interface (設定網路介面 MTU)
+  ansible.builtin.command: >
+    ip link set ens18 mtu {{ network_mtu | default(1500) }}
+  become: true
+  ignore_errors: true
+  changed_when: false
+
+- name: Verify network interface status (驗證網路介面狀態)
+  ansible.builtin.command: ip addr show ens18
+  register: network_status
+  changed_when: false
+
+- name: Display network configuration result (顯示網路配置結果)
+  ansible.builtin.debug:
+    msg: |
+      ========================================
+      Network Configuration Applied (網路配置已應用)
+      ========================================
+
+      Node: {{ inventory_hostname }}
+      Role: {{ 'Worker' if 'workers' in group_names else 'Master' }}
+
+      Network Interfaces: (網路介面)
+      {{ network_status.stdout }}
+
+      MTU: {{ network_mtu | default(1500) }}
+
+      ========================================

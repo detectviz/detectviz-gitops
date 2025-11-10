@@ -1,6 +1,6 @@
 # terraform
 
-Terraform 配置，用於在 Proxmox 上自動化創建 Detectviz 平台所需的 5 台虛擬機。
+Terraform 配置，用於在 Proxmox 上自動化創建 Detectviz 平台所需的 4 台虛擬機。
 
 ---
 
@@ -48,10 +48,10 @@ vim terraform.tfvars  # 填入您的 Proxmox API Token 和其他配置
 terraform init
 
 # 3. 規劃變更（驗證配置）
-terraform plan
+terraform plan  # 自動載入 terraform.tfvars
 
 # 4. 應用配置（創建 VM）
-terraform apply
+terraform apply  # 自動載入 terraform.tfvars
 
 # 5. 生成 Ansible inventory（用於下游 ansible）
 terraform output -json > /tmp/terraform-output.json
@@ -61,7 +61,7 @@ terraform output -json > /tmp/terraform-output.json
 
 ## 檔案結構
 
-```
+```bash
 terraform/
 ├── main.tf                     # 主配置文件（VM 定義）
 ├── variables.tf                # 變數定義與驗證
@@ -69,12 +69,15 @@ terraform/
 ├── terraform.tfvars.example    # 配置範本
 ├── terraform.tfstate           # 狀態檔案（已 gitignore）
 ├── .gitignore                  # Git 忽略規則
-├── README.md                   # 本文檔
-└── docs/                       # 相關文檔
-    ├── proxmox-credentials.md  # Proxmox API Token 設定指南
-    ├── ubuntu-template.md      # Ubuntu Cloud-Init 模板製作
-    └── best-practices.md       # Terraform 最佳實踐與規格
+└── README.md                   # 本文檔
 ```
+
+### 相關文檔
+
+- **基礎設施設置**: [docs/infrastructure/](/docs/infrastructure/) - 完整的 Proxmox、網路、儲存設置指南
+- **Terraform 文檔**: [docs/concepts/terraform](/docs/concepts/terraform/)
+- **Proxmox API 認證**: [docs/infrastructure/proxmox/configuration.md](/docs/infrastructure/proxmox/configuration.md#認證設置)
+- **Ubuntu 模板製作**: [docs/infrastructure/proxmox/installation.md](/docs/infrastructure/proxmox/installation.md#ubuntu-cloud-image-模板製作)
 
 ### 關鍵檔案說明
 
@@ -112,31 +115,11 @@ Terraform 變數配置文件：
 | `proxmox_api_token_secret` | API Token Secret | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
 | `ssh_public_key` | SSH 公鑰內容 | `ssh-rsa AAAAB3...` |
 
-### VM 規格配置
-
-#### Master 節點
-```hcl
-master_count  = 3
-master_cpu    = 4
-master_memory = 8192  # MB
-master_disk   = 50    # GB
-```
-
-#### Worker 節點
-```hcl
-worker_count  = 1
-worker_cpu    = 12
-worker_memory = 24576
-worker_disk   = 320
-```
-
----
-
 ## 進階操作
 
 ### 僅規劃不執行
 ```bash
-terraform plan -var-file=terraform.tfvars
+terraform plan  -var-file=terraform.tfvars
 ```
 
 ### 查看當前狀態
@@ -146,17 +129,17 @@ terraform show
 
 ### 僅創建特定資源
 ```bash
-terraform apply -target=proxmox_vm_qemu.master[0]
+terraform apply -target=proxmox_vm_qemu.master[0]  # 自動載入 terraform.tfvars
 ```
 
 ### 銷毀所有資源
 ```bash
-terraform destroy -var-file=terraform.tfvars
+terraform destroy  # 自動載入 terraform.tfvars
 ```
 
 ### 刷新狀態
 ```bash
-terraform refresh
+terraform refresh  # 自動載入 terraform.tfvars
 ```
 
 ---
@@ -181,7 +164,7 @@ Error: VM template not found
 ```
 
 **解決方案**：
-- 確認已按照 Proxmox 文檔創建 Ubuntu 22.04 Cloud-Init 模板
+- 確認已按照 [Ubuntu 模板製作指南](/docs/infrastructure/proxmox/installation.md#ubuntu-cloud-image-模板製作) 創建模板
 - 檢查模板 ID 是否正確（通常為 9000）
 
 #### 3. 資源已存在
@@ -199,52 +182,12 @@ terraform import proxmox_vm_qemu.master[0] <proxmox-vm-id>
 
 ## 參考資源
 
-### Terraform 文檔
-- [Terraform 官方文檔](https://developer.hashicorp.com/terraform/docs)
-- [Terraform CLI 命令](https://developer.hashicorp.com/terraform/cli)
-- [Terraform 狀態管理](https://developer.hashicorp.com/terraform/language/state)
-
-### Proxmox 文檔
-- [Proxmox VE 文檔](https://pve.proxmox.com/pve-docs/)
-- [Proxmox API 文檔](https://pve.proxmox.com/pve-docs/api-viewer/)
-- [Proxmox Cloud-Init 支援](https://pve.proxmox.com/wiki/Cloud-Init_Support)
-
-### Provider 文檔
-- [Proxmox Provider 文檔](https://registry.terraform.io/providers/Telmate/proxmox/latest/docs)
-- [Proxmox Provider GitHub](https://github.com/Telmate/terraform-provider-proxmox)
-
 ### 本倉庫文檔
-- [Proxmox API 認證設定](docs/proxmox-credentials.md)
-- [Ubuntu Cloud-Init 模板製作](docs/ubuntu-template.md)
-- [Terraform 最佳實踐與規格](docs/best-practices.md)
+- [基礎設施完整指南](/docs/infrastructure/) - 包含所有設置文檔
+- [Proxmox 配置指南](/docs/infrastructure/proxmox/)
+- [網路設置指南](/docs/infrastructure/networking/)
+- [儲存架構指南](/docs/infrastructure/storage/)
 
----
-
-## 相關倉庫
-
-| 倉庫 | 描述 | 依賴關係 |
-|------|------|----------|
-| [infra-deployment](https://github.com/detectviz/infra-deployment) | 中央編排與部署流程 | 調度 terraform |
-| [ansible](https://github.com/detectviz/ansible) | Kubernetes 集群部署 | 使用 Terraform 輸出作為 inventory |
-| [kubernetes](https://github.com/detectviz/kubernetes) | 集群級別配置 | 在 Terraform 建立的 VM 上運行 |
-| [gitops-argocd](https://github.com/detectviz/gitops-argocd) | GitOps 應用交付 | 最終應用部署 |
-| [observability-stack](https://github.com/detectviz/observability-stack) | 可觀測性外部組件 | 基礎設施監控 |
-
-> 📌 **完整架構說明**: 請參閱 [https://github.com/detectviz/infra-deployment/blob/main/docs/ARCHITECTURE.md](https://github.com/detectviz/infra-deployment/blob/main/docs/ARCHITECTURE.md) - 五倉庫職責劃分與資料流總覽
-
----
-
-## 維護資訊
-
-### 聯絡方式
-- 維護者: Detectviz Team
-- 問題回報: [GitHub Issues](https://github.com/detectviz/terraform/issues)
-
-### 版本資訊
-- 本倉庫版本: v2.0.0
-- Terraform 版本: >= 1.5.0
-- Proxmox Provider 版本: >= 2.9.0
-- Ubuntu 版本: 22.04 LTS
-- 相依倉庫:
-  - infra-deployment >= v2.0.0
-- 最後更新: 2025-10-25
+### 相關倉庫
+- [ansible](/ansible/) - Kubernetes 集群部署
+- [argocd](/argocd/) - GitOps 應用交付

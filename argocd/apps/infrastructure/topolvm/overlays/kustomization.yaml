@@ -4,9 +4,9 @@ kind: Kustomization
 helmCharts:
   - name: topolvm
     repo: https://topolvm.github.io/topolvm
-    version: 12.1.0
+    version: 12.1.0 # (指定版本)
     releaseName: topolvm
-    namespace: kube-system
+    namespace: kube-system # (TopoLVM 通常在 kube-system 命名空間)
     valuesFile: values.yaml
 
 resources:

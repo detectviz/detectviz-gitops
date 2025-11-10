@@ -27,7 +27,7 @@ apt install dnsmasq -y
 ### 2. 建立配置檔案
 ```bash
 # 編輯 dnsmasq 配置
-nano /etc/dnsmasq.d/detectviz.conf
+vim /etc/dnsmasq.d/detectviz.conf
 ```
 
 ### 3. 配置內容
@@ -75,6 +75,20 @@ systemctl status dnsmasq
 | `master-3.detectviz.internal` | 192.168.0.13 | Master 節點 #3 |
 | `app-worker.detectviz.internal` | 192.168.0.14 | Application Worker |
 | `argocd.detectviz.local` | 192.168.0.10 | ArgoCD UI |
+
+## 本機 DNS 設定
+
+本機加入 `/etc/hosts` 檔案，方便使用者使用域名連線到各個節點。
+
+```bash
+192.168.0.2 proxmox.detectviz.internal proxmox
+192.168.0.10 k8s-api.detectviz.internal k8s-api
+192.168.0.11 master-1.detectviz.internal master-1
+192.168.0.12 master-2.detectviz.internal master-2
+192.168.0.13 master-3.detectviz.internal master-3
+192.168.0.14 app-worker.detectviz.internal app-worker
+192.168.0.104 ipmi.detectviz.internal ipmi
+```
 
 ## 測試和驗證
 

@@ -1,0 +1,13 @@
+# 檔案位置: argocd/apps/infrastructure/metallb/overlays/patch-controller-nodeselector.yaml
+# 說明: 根據 README.md 架構，強制 metallb controller 部署到 app-worker
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  # FIXME: 這裡的 name 必須與 base/metallb-upstream.yaml 中的 controller 名稱一致
+  name: controller
+  namespace: metallb-system # 必須指定 namespace
+spec:
+  template:
+    spec:
+      nodeSelector:
+        node-role.kubernetes.io/workload-apps: "true"

@@ -1,7 +1,5 @@
 # MetalLB IP Address Pool Configuration
-# 修正 IP 範圍以避免與現有設備衝突
-# 原始範圍 192.168.0.100-192.168.0.150 會與本機 (.101) 和 IPMI (.104) 衝突
-# 新範圍 192.168.0.200-192.168.0.220 避免了這些衝突
+# 必須修改為安全的 IP 範圍 (例如 192.168.0.200-192.168.0.220)，以避免與本機 (.101) 和 IPMI (.104) 衝突。
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
 metadata:

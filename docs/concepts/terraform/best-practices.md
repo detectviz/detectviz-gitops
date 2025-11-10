@@ -175,9 +175,3 @@ Terraform 執行完畢後，**必須**自動生成下游工具所需的設定檔
 
 - **`prevent_destroy`**：對於關鍵的、不可輕易重建的資源 (例如掛載重要資料的磁碟)，考慮在 `lifecycle` 區塊中設定 `prevent_destroy = true` 以防止意外刪除。
 - **`ignore_changes`**：若某些資源屬性會被 Proxmox 或其他外部系統修改，可使用 `ignore_changes` 來避免 Terraform 在下次執行時將其還原。但此做法應謹慎使用，以免造成設定漂移 (Configuration Drift)。
-
----
-
-## 3. 參考文件 (References)
-
-- `references/terraform-provider-proxmox/`

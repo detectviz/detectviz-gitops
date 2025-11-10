@@ -1,10 +1,10 @@
 ---
-- name: Check if kubeadm has been initialized (檢查 kubeadm 是否已初始化)
+- name: Check if kubeadm has been initialized
   ansible.builtin.stat:
     path: /etc/kubernetes/admin.conf
   register: kubeadm_initialized
 
-- name: Ensure Kubernetes directories exist (確保 Kubernetes 目錄存在)
+- name: Ensure Kubernetes directories exist
   ansible.builtin.file:
     path: "{{ item.path }}"
     state: directory
@@ -41,13 +41,13 @@
   become: true
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
 
-- name: Clean up any previous Kubernetes installation (清理任何之前的 Kubernetes 安裝)
+- name: Clean up any previous Kubernetes installation
   ansible.builtin.command: kubeadm reset --force --cri-socket unix:///var/run/containerd/containerd.sock
   ignore_errors: true
   become: true
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
 
-- name: Remove old Kubernetes manifests and configs (移除舊的 Kubernetes manifests 和配置)
+- name: Remove old Kubernetes manifests and configs
   ansible.builtin.file:
     path: "{{ item }}"
     state: absent
@@ -59,7 +59,7 @@
   become: true
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
 
-- name: Restart containerd to apply new sandbox image (重啟 containerd 以應用新的 sandbox 鏡像)
+- name: Restart containerd to apply new sandbox image
   ansible.builtin.systemd:
     name: containerd
     state: restarted
@@ -67,36 +67,36 @@
   become: true
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
 
-- name: Verify containerd configuration (驗證 containerd 配置)
+- name: Verify containerd configuration
   ansible.builtin.command: containerd --version && crictl version
   become: true
-  when: "'masters' in group_names and inventory_hostname == 'master-1'"
+  when: inventory_hostname == groups['masters'][0']
 
-- name: Check containerd sandbox image (檢查 containerd sandbox 鏡像)
+- name: Check containerd sandbox image
   ansible.builtin.command: grep sandbox_image /etc/containerd/config.toml
   become: true
   register: sandbox_check
-  when: "'masters' in group_names and inventory_hostname == 'master-1'"
+  when: inventory_hostname == groups['masters'][0']
 
-- name: Display containerd sandbox image setting (顯示 containerd sandbox 鏡像設定)
+- name: Display containerd sandbox image setting
   ansible.builtin.debug:
     msg: "Containerd sandbox image: {{ sandbox_check.stdout | default('not found') }}"
   when:
-    - "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
+    - inventory_hostname == groups['masters'][0]
     - sandbox_check is defined
 
-- name: Generate kubeadm config (生成 kubeadm 配置)
+- name: Generate kubeadm config
   ansible.builtin.template:
     src: kubeadm-config.yaml.j2
     dest: /tmp/kubeadm-config.yaml
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
 
-- name: Pre-pull Kubernetes images (預先拉取 Kubernetes 鏡像)
+- name: Pre-pull Kubernetes images
   ansible.builtin.command: kubeadm config images pull
   become: true
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
 
-- name: Initialize first control plane node (初始化第一個控制平面節點)
+- name: Initialize first control plane node
   ansible.builtin.command: >
     timeout 600 kubeadm init --config /tmp/kubeadm-config.yaml
     --ignore-preflight-errors=all --skip-phases=addon/kube-proxy
@@ -105,14 +105,14 @@
     creates: /etc/kubernetes/admin.conf
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
 
-- name: Ensure .kube directory exists for root user (確保 root 用戶的 .kube 目錄存在)
+- name: Ensure .kube directory exists for root user
   ansible.builtin.file:
     path: /root/.kube
     state: directory
     mode: "0700"
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
 
-- name: Copy admin kubeconfig to root (複製 admin kubeconfig 到 root)'s .kube directory
+- name: Copy admin kubeconfig to root's .kube directory
   ansible.builtin.copy:
     src: /etc/kubernetes/admin.conf
     dest: /root/.kube/config
@@ -120,19 +120,19 @@
     mode: "0600"
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
 
-- name: Fetch admin kubeconfig to control node (獲取 admin kubeconfig 到控制節點)
+- name: Fetch admin kubeconfig to control node
   ansible.builtin.fetch:
     src: /etc/kubernetes/admin.conf
     dest: "{{ playbook_dir }}/kubeconfig/admin.conf"
     flat: yes
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
 
-- name: Wait for API server to be ready (等待 API server 準備就緒)
+- name: Wait for API server to be ready
   ansible.builtin.pause:
     seconds: 30
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
 
-- name: Check DNS resolution for API server (檢查 API server 的 DNS 解析)
+- name: Check DNS resolution for API server
   ansible.builtin.shell: |
     if nslookup k8s-api.detectviz.internal >/dev/null 2>&1; then
       echo "DNS resolution successful"
@@ -148,12 +148,12 @@
   changed_when: false
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
 
-- name: Display DNS check result (顯示 DNS 檢查結果)
+- name: Display DNS check result
   ansible.builtin.debug:
     msg: "DNS resolution result: {{ dns_check.stdout }}"
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
 
-- name: Add API server to /etc/hosts as fallback (將 API server 添加到 /etc/hosts 作為後備)
+- name: Add API server to /etc/hosts as fallback
   ansible.builtin.lineinfile:
     path: /etc/hosts
     line: "{{ control_plane_vip }} k8s-api.detectviz.internal k8s-api"
@@ -161,7 +161,7 @@
   become: true
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
 
-- name: Update kubeconfig server URLs to use local IP (更新 kubeconfig server URL 以使用本地 IP)
+- name: Update kubeconfig server URLs to use local IP
   ansible.builtin.lineinfile:
     path: "{{ item }}"
     regexp: "server: https://k8s-api.detectviz.internal:6443"
@@ -172,7 +172,7 @@
   become: true
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
 
-- name: Check API server health (檢查 API server 健康狀態)
+- name: Check API server health
   ansible.builtin.command: kubectl --kubeconfig=/etc/kubernetes/admin.conf get nodes
   register: api_health_check
   retries: 5
@@ -181,7 +181,7 @@
   changed_when: false
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
 
-- name: Create cluster-admin clusterrolebinding for kubernetes-admin user (為 kubernetes-admin 用戶創建 cluster-admin clusterrolebinding)
+- name: Create cluster-admin clusterrolebinding for kubernetes-admin user
   ansible.builtin.command: >
     kubectl --kubeconfig=/etc/kubernetes/super-admin.conf create clusterrolebinding kubernetes-admin-binding
     --clusterrole=cluster-admin --user=kubernetes-admin
@@ -189,7 +189,7 @@
   changed_when: false
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
 
-- name: Upload control plane certificates (上傳控制平面證書)
+- name: Upload control plane certificates
   ansible.builtin.command: kubeadm init phase upload-certs --upload-certs
   register: kubeadm_upload_certs
   changed_when: false
@@ -198,12 +198,12 @@
   until: kubeadm_upload_certs.rc == 0
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
 
-- name: Set kubeadm certificate key fact (設置 kubeadm 證書金鑰事實)
+- name: Set kubeadm certificate key fact
   ansible.builtin.set_fact:
     kubeadm_certificate_key: "{{ kubeadm_upload_certs.stdout | regex_search('[a-f0-9]{64}') }}"
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
 
-- name: Create kubeadm join command token (創建 kubeadm 加入命令 token)
+- name: Create kubeadm join command token
   ansible.builtin.shell: |
     # 使用 kubectl 創建 token 和 join 命令
     TOKEN=$(kubectl --kubeconfig=/etc/kubernetes/admin.conf create token --ttl=24h)
@@ -213,7 +213,7 @@
   changed_when: false
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
 
-- name: Set join command facts on master (在 master 上設置加入命令事實)
+- name: Set join command facts on master
   ansible.builtin.set_fact:
     control_plane_join_command: "{{ kubeadm_join_command.stdout }} --control-plane{{ ' --certificate-key ' + kubeadm_certificate_key if kubeadm_certificate_key is defined else '' }}"
     worker_join_command: "{{ kubeadm_join_command.stdout }}"
@@ -249,7 +249,7 @@
     msg: "Skipping custom kube-proxy configuration - using Kubernetes defaults"
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
 
-- name: Join additional control plane nodes (加入額外的控制平面節點)
+- name: Join additional control plane nodes
   ansible.builtin.command: "{{ hostvars[groups['masters'][0]]['control_plane_join_command'] }}"
   args:
     creates: /etc/kubernetes/kubelet.conf

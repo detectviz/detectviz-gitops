@@ -15,7 +15,7 @@ pod_network_cidr: "10.244.0.0/16" # Pod 網路 CIDR
 service_cidr: "10.96.0.0/12" # Service 網路 CIDR
 
 # 容器運行時配置
-containerd_sandbox_image: "registry.k8s.io/pause:3.9" # Containerd 沙箱鏡像
+containerd_sandbox_image: "registry.k8s.io/pause:3.10" # Containerd 沙箱鏡像 (匹配 Kubernetes 1.32.0)
 
 # CNI (Container Network Interface) 配置
 cni_provider: "calico"

@@ -1,5 +1,6 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+namespace: metallb-system # 確保命名空間正確
 
 resources:
   - ../base
@@ -7,5 +8,11 @@ resources:
   - l2advertisement.yaml
 
 patchesStrategicMerge:
+  # (現有) 容忍 controller 在 master 節點運行 (如果需要)
   - controller-tolerations.yaml
+  # (現有) 容忍 speaker 在 master 節點運行 (必要)
   - speaker-tolerations.yaml
+
+  # --- 關鍵新增 ---
+  # 新增一個 patch 檔案來為 controller 強制指定 nodeSelector
+  - patch-controller-nodeselector.yaml

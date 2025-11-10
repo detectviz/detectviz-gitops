@@ -55,6 +55,18 @@ variable "proxmox_bridge" {
   default     = "vmbr0"
 }
 
+variable "proxmox_mtu" {
+  description = "Proxmox 橋接器 MTU"
+  type        = number
+  default     = 9000
+}
+
+variable "k8s_overlay_bridge" {
+  description = "Kubernetes Overlay 網路橋接器（階段一：同主網路）"
+  type        = string
+  default     = "vmbr0"
+}
+
 # ============================================
 # VM 模板配置
 # ============================================
