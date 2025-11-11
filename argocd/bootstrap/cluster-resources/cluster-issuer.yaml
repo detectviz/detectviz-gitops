@@ -25,4 +25,4 @@ spec:
     name: selfsigned-issuer
     kind: ClusterIssuer
   dnsNames:
-    - argocd.detectviz.local
+    - argocd.detectviz.internal

@@ -215,13 +215,13 @@
 
           Access Points:
           • Kubernetes API: https://{{ control_plane_vip }}:6443
-          • ArgoCD UI: https://argocd.detectviz.local
+          • ArgoCD UI: https://argocd.detectviz.internal
           • Grafana: https://grafana.detectviz.local
           • Keycloak: https://keycloak.detectviz.local
 
           Management Commands:
           • kubectl --kubeconfig=kubeconfig/admin.conf get nodes
-          • argocd login argocd.detectviz.local
+          • argocd login argocd.detectviz.internal
           • argocd app list
 
           Next Steps:

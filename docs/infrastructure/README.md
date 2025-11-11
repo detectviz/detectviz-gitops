@@ -90,7 +90,7 @@ docs/infrastructure/
 | 組件 | IP 位址 | 說明 |
 |------|---------|------|
 | Proxmox | 192.168.0.2 | 虛擬化平台 |
-| IPMI | 192.168.0.104 | 硬體管理 |
+| IPMI | 192.168.0.4 | 硬體管理 |
 | K8s VIP | 192.168.0.10 | 集群 API |
 | Master 節點 | 192.168.0.11-13 | 控制平面 |
 | Worker 節點 | 192.168.0.14 | 應用運行 |
@@ -100,7 +100,7 @@ docs/infrastructure/
 |------|------|---------|
 | Proxmox | proxmox.detectviz.internal | 192.168.0.2 |
 | Kubernetes API | k8s-api.detectviz.internal | 192.168.0.10 |
-| ArgoCD | argocd.detectviz.local | 192.168.0.10 |
+| ArgoCD | argocd.detectviz.internal| 192.168.0.10 |
 
 ### 儲存架構
 | 層級 | 設備 | 容量 | 用途 |

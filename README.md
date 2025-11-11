@@ -46,15 +46,15 @@ graph LR
 
 ## infra 服務列表 (detectviz-gitops)
 對應部署階段：[P2] ~ [P4]
-- [P2] **kube-vip**：控制平面高可用 (VIP)
-- [P2] **calico**：CNI 網路插件 (NetworkPolicy)
-- [P3] **argocd**：GitOps 控制面與應用交付
-- [P3] **vault**：秘密管理與安全存儲
-- [P3] **cert-manager**：TLS 證書自動化管理
+- [P2] **kube-vip**：控制平面高可用 (VIP 192.168.0.10，L2 ARP 模式)
+- [P2] **calico**：CNI 網路插件 (VXLAN mode，NetworkPolicy enforcement，MTU 8950)
+- [P3] **argocd**：GitOps 控制面與應用交付 (HA 模式，Redis HA)
+- [P3] **vault**：秘密管理與安全存儲 (Raft 儲存後端)
+- [P3] **cert-manager**：TLS 證書自動化管理 (Self-signed ClusterIssuer)
 - [P3] **external-secrets-operator**：從 Vault 同步秘密至 Kubernetes Secret
-- [P4] **metallb**：LoadBalancer 服務提供
-- [P4] **topolvm**：本地儲存 Volume 管理
-- [P4] **ingress-nginx**：提供外部入口的 L7 Proxy（使用 NGINX controller）
+- [P4] **metallb**：LoadBalancer 服務提供 (L2 模式，IP Pool 192.168.0.200-220)
+- [P4] **topolvm**：本地儲存 Volume 管理 (LVM-based CSI driver)
+- [P4] **ingress-nginx**：L7 反向代理與 Ingress Controller (VIP 192.168.0.10)
 
 > [!NOTE]
 > Kubernetes 預設系統元件（如：`coredns`, `kube-controller-manager`, `kube-scheduler`, `kube-proxy`）由 Ansible 安裝時一併建立，雖不經 Helm 管理，仍為 Control Plane 基礎組件。
@@ -208,23 +208,93 @@ graph TD
 - **Storage**: Master 節點 100GB (OS + etcd)，Worker 節點 320GB (應用資料)
 - **總資源**: 22 CPU cores, 48 GB RAM, 620 GB 儲存空間
 
-## 網域規劃
-本網域配置設計目的是展示平台整合能力，並將各功能區分子網域以供瀏覽與示範使用。
+### 節點標籤與調度策略
 
-1. GoDaddy 註冊網域 detectviz.com
-2. Cloudflare 設定 DNS provider，並將 `detectviz.com` 指向 Cloudflare 的 NS 伺服器
-2. GitHub Pages 綁定 `blog.detectviz.com`
-3. Grafana 公網展示 `grafana.detectviz.com`
-4. ArgoCD UI  公網展示  `argocd.detectviz.com`
+| 節點類型 | Kubernetes 標籤 | 容忍度 (Tolerations) | Pod 調度策略 |
+|---------|----------------|-------------------|-------------|
+| **Control Plane** | `node-role.kubernetes.io/control-plane` | - | 系統元件 (API Server, ETCD, Scheduler, Controller Manager) |
+| **Worker** | `node-role.kubernetes.io/workload-apps: "true"` | - | 所有應用工作負載 (Ingress, Prometheus, Grafana, Loki 等) |
+
+**調度規則**：
+- 基礎設施元件 (MetalLB, cert-manager, ingress-nginx) 使用 `nodeSelector: workload-apps` 部署到 worker
+- 觀測性元件 (Prometheus, Mimir, Loki) 統一使用 `nodeSelector: workload-apps` 部署到 worker
+- 應用服務 (ArgoCD, Grafana, Vault, Keycloak) 部署到 worker
+- Control Plane 元件保留給 Kubernetes 系統服務使用
+
+## 網域規劃
+
+### 公網域名 (detectviz.com)
+本網域配置設計目的是展示平台整合能力，並將各功能區分子網域以供公開訪問。
+
+1. **註冊**: GoDaddy 註冊網域 detectviz.com
+2. **DNS Provider**: Cloudflare 管理，NS 伺服器指向 Cloudflare
+3. **子網域配置**:
+   - `blog.detectviz.com` → GitHub Pages (技術部落格)
+   - `grafana.detectviz.com` → 公網展示儀表板
+   - `argocd.detectviz.com` → GitOps 管理介面
+
+### 內部域名 (detectviz.internal)
+內部網路使用 `.internal` 頂級域名，由 Proxmox dnsmasq 提供 DNS 解析。
+
+- **detectviz.internal**: 外部網路域名 (192.168.0.x)
+  - `proxmox.detectviz.internal` → 192.168.0.2
+  - `ipmi.detectviz.internal` → 192.168.0.4
+  - `k8s-api.detectviz.internal` → 192.168.0.10 (VIP)
+  - `argocd.detectviz.internal` → 192.168.0.10 (Ingress)
+  - `grafana.detectviz.internal` → 192.168.0.10 (Ingress)
+  - `master-{1,2,3}.detectviz.internal` → 192.168.0.{11,12,13}
+  - `app-worker.detectviz.internal` → 192.168.0.14
+
+- **cluster.internal**: 內部集群網路域名 (10.0.0.x)
+  - `master-{1,2,3}.cluster.internal` → 10.0.0.{11,12,13}
+  - `app-worker.cluster.internal` → 10.0.0.14
 
 ### Network Configuration
-- **IPMI**: 192.168.0.104 (ipmi.detectviz.internal)
-- **Proxmox**: 192.168.0.2 (proxmox.detectviz.internal)
-- **Control Plane VIP**: 192.168.0.10 (k8s-api.detectviz.internal)
-- **ArgoCD UI**: 192.168.0.11 (argocd.detectviz.local) 指向運行 NGINX Ingress 的節點
-- **Pod CIDR**: 10.244.0.0/16
+
+#### 雙網路架構設計
+- **外部網路 (vmbr0)**: 192.168.0.0/24 - 管理界面與應用訪問
+- **內部集群網路 (vmbr1)**: 10.0.0.0/24 - Kubernetes 節點間通訊
+
+#### 節點 IP 分配
+| 節點 | 外部 IP (vmbr0) | 內部 IP (vmbr1) | 用途 |
+|------|----------------|----------------|------|
+| Proxmox | 192.168.0.2 | - | 虛擬化管理平台 + DNS |
+| IPMI | 192.168.0.4 | - | 硬體管理介面 |
+| **VIP** | **192.168.0.10** | - | Kubernetes API + Ingress |
+| master-1 | 192.168.0.11 | 10.0.0.11 | Control Plane + Prometheus |
+| master-2 | 192.168.0.12 | 10.0.0.12 | Control Plane + Mimir |
+| master-3 | 192.168.0.13 | 10.0.0.13 | Control Plane + Loki |
+| app-worker | 192.168.0.14 | 10.0.0.14 | 應用工作負載 |
+
+#### 域名規劃
+- **detectviz.internal**: 外部域名 (應用訪問，解析至 192.168.0.x)
+  - `argocd.detectviz.internal` → 192.168.0.10
+  - `grafana.detectviz.internal` → 192.168.0.10
+  - `prometheus.detectviz.internal` → 192.168.0.10
+- **cluster.internal**: 內部域名 (節點通訊，解析至 10.0.0.x)
+  - `master-{1,2,3}.cluster.internal` → 10.0.0.{11,12,13}
+
+#### Kubernetes 網路
+- **Pod CIDR**: 10.244.0.0/16 (Calico IPAM)
 - **Service CIDR**: 10.96.0.0/12
 - **CNI**: Calico with NetworkPolicy enforcement
+- **CNI MTU**: 8950 (Jumbo Frames - 50 bytes VXLAN overhead)
+
+#### LoadBalancer 配置
+- **MetalLB Mode**: L2 (Layer 2 mode)
+- **IP Pool**: 192.168.0.200-220
+- **預留 VIP**: 192.168.0.10 (由 Kube-VIP 管理)
+
+#### DNS 配置
+- **主 DNS**: 192.168.0.2 (Proxmox dnsmasq)
+- **備用 DNS**: 8.8.8.8
+- **搜尋域**: detectviz.internal, cluster.internal
+
+#### 網路優化
+- **MTU**: 9000 (Jumbo Frames)
+- **rp_filter**: 2 (Loose mode，支援雙網路非對稱路由)
+- **ip_forward**: 1 (啟用 IP 轉發)
+- **Bridge netfilter**: enabled (支援 NetworkPolicy)
 
 ### Service Ports
 | Service | Port | Protocol | Purpose |
@@ -249,5 +319,10 @@ graph TD
 ### VM 資源分配
 
 - **VM ID 範圍**: 111~114 (master-1 ~ app-worker)
-- **域名**: `*.detectviz.internal`
-- **網路橋接器**: vmbr0 (MTU 9000)
+- **域名**:
+  - 外部: `*.detectviz.internal` (管理和應用訪問)
+  - 內部: `*.cluster.internal` (Kubernetes 節點通訊)
+- **網路橋接器**:
+  - vmbr0 (外部網路，192.168.0.0/24，MTU 9000)
+  - vmbr1 (內部集群網路，10.0.0.0/24，MTU 9000)
+- **網路介面**: 每個 VM 配置 2 個 VirtIO 網卡 (ens18 + ens19)

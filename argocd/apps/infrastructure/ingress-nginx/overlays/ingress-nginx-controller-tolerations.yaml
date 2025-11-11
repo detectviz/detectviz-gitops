@@ -1,0 +1,17 @@
+# NGINX Ingress Controller Node Scheduling
+# Ensures the controller only runs on app-worker node with workload-apps label
+# 根據架構設計，Ingress Controller 專門部署在 worker 節點，不應在 master 節點運行
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+spec:
+  template:
+    spec:
+      # Node selector to deploy on app-worker only
+      nodeSelector:
+        node-role.kubernetes.io/workload-apps: "true"
+
+      # 不添加 control-plane tolerations，確保只在 worker 節點運行

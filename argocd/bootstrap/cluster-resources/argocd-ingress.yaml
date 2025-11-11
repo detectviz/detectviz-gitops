@@ -8,8 +8,9 @@ metadata:
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
-    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # ArgoCD Server 運行在 insecure 模式，NGINX 處理 TLS
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    cert-manager.io/cluster-issuer: selfsigned-issuer
   labels:
     app.kubernetes.io/name: argocd-server
     app.kubernetes.io/part-of: argocd
@@ -17,10 +18,10 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - argocd.detectviz.local
+        - argocd.detectviz.internal
       secretName: argocd-tls
   rules:
-    - host: argocd.detectviz.local
+    - host: argocd.detectviz.internal
       http:
         paths:
           - path: /
@@ -29,4 +30,4 @@ spec:
               service:
                 name: argocd-server
                 port:
-                  number: 443
+                  number: 80

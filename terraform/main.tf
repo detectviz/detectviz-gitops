@@ -84,9 +84,17 @@ resource "proxmox_virtual_environment_vm" "k8s_masters" {
     replicate = false
   }
 
-  # 網路配置 - 主網路 (管理網路 + Kubernetes Overlay)
+  # 網路配置 - 外部網路 (vmbr0 - 管理網路 + 應用流量)
   network_device {
     bridge  = var.proxmox_bridge
+    model   = "virtio"
+    enabled = true
+    mtu     = var.proxmox_mtu
+  }
+
+  # 網路配置 - 內部集群網路 (vmbr1 - Kubernetes 節點間通訊)
+  network_device {
+    bridge  = var.k8s_overlay_bridge
     model   = "virtio"
     enabled = true
     mtu     = var.proxmox_mtu
@@ -102,6 +110,7 @@ resource "proxmox_virtual_environment_vm" "k8s_masters" {
 
   # Cloud-init 配置
   initialization {
+    # 外部網路配置 (ens18 - vmbr0)
     ip_config {
       ipv4 {
         address = "${var.master_ips[count.index]}/24"
@@ -109,8 +118,15 @@ resource "proxmox_virtual_environment_vm" "k8s_masters" {
       }
     }
 
+    # 內部集群網路配置 (ens19 - vmbr1)
+    ip_config {
+      ipv4 {
+        address = "${var.master_internal_ips[count.index]}/24"
+      }
+    }
+
     dns {
-      servers = [var.nameserver]
+      servers = [var.nameserver, var.nameserver_fallback]
     }
 
     user_account {
@@ -183,9 +199,17 @@ resource "proxmox_virtual_environment_vm" "k8s_workers" {
     replicate = false
   }
 
-  # 網路配置 - 主網路 (管理網路 + Kubernetes Overlay)
+  # 網路配置 - 外部網路 (vmbr0 - 管理網路 + 應用流量)
   network_device {
     bridge  = var.proxmox_bridge
+    model   = "virtio"
+    enabled = true
+    mtu     = var.proxmox_mtu
+  }
+
+  # 網路配置 - 內部集群網路 (vmbr1 - Kubernetes 節點間通訊)
+  network_device {
+    bridge  = var.k8s_overlay_bridge
     model   = "virtio"
     enabled = true
     mtu     = var.proxmox_mtu
@@ -201,6 +225,7 @@ resource "proxmox_virtual_environment_vm" "k8s_workers" {
 
   # Cloud-init 配置
   initialization {
+    # 外部網路配置 (ens18 - vmbr0)
     ip_config {
       ipv4 {
         address = "${var.worker_ips[count.index]}/24"
@@ -208,8 +233,15 @@ resource "proxmox_virtual_environment_vm" "k8s_workers" {
       }
     }
 
+    # 內部集群網路配置 (ens19 - vmbr1)
+    ip_config {
+      ipv4 {
+        address = "${var.worker_internal_ips[count.index]}/24"
+      }
+    }
+
     dns {
-      servers = [var.nameserver]
+      servers = [var.nameserver, var.nameserver_fallback]
     }
 
     user_account {
@@ -246,16 +278,18 @@ resource "null_resource" "init_masters" {
     inline = [
       "sudo hostnamectl set-hostname ${var.master_hostnames[count.index]}.${var.domain}",
       "echo '127.0.0.1 ${var.master_hostnames[count.index]}.${var.domain} ${var.master_hostnames[count.index]}' | sudo tee -a /etc/hosts",
-      "# 配置網路 MTU",
-      "sudo tee /etc/netplan/50-custom-mtu.yaml > /dev/null <<EOF",
+      "# 配置雙網路 MTU",
+      "sudo tee /etc/netplan/50-custom-network.yaml > /dev/null <<EOF",
       "network:",
       "  version: 2",
       "  ethernets:",
-      "    ens18:",
+      "    ens18:  # 外部網路 (vmbr0)",
+      "      mtu: ${var.proxmox_mtu}",
+      "    ens19:  # 內部集群網路 (vmbr1)",
       "      mtu: ${var.proxmox_mtu}",
       "EOF",
       "sudo netplan apply",
-      "echo 'VM ${var.master_hostnames[count.index]} 初始化完成，MTU 設定為 ${var.proxmox_mtu}'",
+      "echo 'VM ${var.master_hostnames[count.index]} 雙網路初始化完成，MTU 設定為 ${var.proxmox_mtu}'",
     ]
 
     connection {
@@ -279,16 +313,18 @@ resource "null_resource" "init_workers" {
     inline = [
       "sudo hostnamectl set-hostname ${var.worker_hostnames[count.index]}.${var.domain}",
       "echo '127.0.0.1 ${var.worker_hostnames[count.index]}.${var.domain} ${var.worker_hostnames[count.index]}' | sudo tee -a /etc/hosts",
-      "# 配置網路 MTU (主網路)",
-      "sudo tee /etc/netplan/50-custom-mtu.yaml > /dev/null <<EOF",
+      "# 配置雙網路 MTU",
+      "sudo tee /etc/netplan/50-custom-network.yaml > /dev/null <<EOF",
       "network:",
       "  version: 2",
       "  ethernets:",
-      "    ens18:",
+      "    ens18:  # 外部網路 (vmbr0)",
+      "      mtu: ${var.proxmox_mtu}",
+      "    ens19:  # 內部集群網路 (vmbr1)",
       "      mtu: ${var.proxmox_mtu}",
       "EOF",
       "sudo netplan apply",
-      "echo 'VM ${var.worker_hostnames[count.index]} 初始化完成，MTU 設定為 ${var.proxmox_mtu}'",
+      "echo 'VM ${var.worker_hostnames[count.index]} 雙網路初始化完成，MTU 設定為 ${var.proxmox_mtu}'",
     ]
 
     connection {
@@ -348,8 +384,13 @@ control_plane_vip=${var.control_plane_vip}                    # 控制平面虛�
 network_mtu=${var.proxmox_mtu}                              # 網路 MTU (支援巨型幀)
 k8s_overlay_bridge=${var.k8s_overlay_bridge}                # Kubernetes Overlay 網路橋接器
 
+# 網路配置
+cluster_network=10.0.0.0/24  # vmbr1 集群網路
+cluster_domain=${var.cluster_domain}  # Kubernetes 集群內部域名
+
 # 網路介面對應 (virtio 網路設備順序)
-# ens18: 主網路 (管理網路 + Kubernetes Overlay) - 所有節點
+# ens18: 外部網路 (vmbr0 - 管理網路 + 應用流量) - 所有節點
+# ens19: 內部集群網路 (vmbr1 - Kubernetes 節點間通訊) - 所有節點
 EOF
       chmod 644 ../ansible/inventory.ini
       echo "[✓] Ansible inventory 已生成: /ansible/inventory.ini"
@@ -369,20 +410,26 @@ EOF
     EOT
   }
 
-  # 生成 /etc/hosts 片段（用於本地 DNS 解析）
+  # 生成 /etc/hosts 片段（用於 VM 內部和本地開發）
   provisioner "local-exec" {
     command = <<-EOT
       cat > ../../hosts-fragment.txt <<EOF
-# Detectviz Platform Hosts
+# Detectviz Platform Hosts (Terraform 自動生成)
 # 自動生成於：$(date)
+
+# 外部網路 (vmbr0 - 192.168.0.0/24)
 ${join("\n", [for i, ip in var.master_ips : "${ip} ${var.master_hostnames[i]}.${var.domain} ${var.master_hostnames[i]}"])}
 ${join("\n", [for i, ip in var.worker_ips : "${ip} ${var.worker_hostnames[i]}.${var.domain} ${var.worker_hostnames[i]}"])}
 ${var.control_plane_vip} k8s-api.${var.domain} k8s-api
+
+# 內部集群網路 (vmbr1 - 10.0.0.0/24 - Kubernetes 節點間通訊)
+${join("\n", [for i, ip in var.master_internal_ips : "${ip} ${var.master_hostnames[i]}.${var.cluster_domain} ${var.master_hostnames[i]}-cluster"])}
+${join("\n", [for i, ip in var.worker_internal_ips : "${ip} ${var.worker_hostnames[i]}.${var.cluster_domain} ${var.worker_hostnames[i]}-cluster"])}
 EOF
       echo "[✓] Hosts 片段已生成: hosts-fragment.txt"
       echo "   (位於專案根目錄)"
       echo ""
-      echo "請將以下內容加入內部 DNS 或本地 /etc/hosts："
+      echo "請將以下內容加入 Proxmox dnsmasq 或本地 /etc/hosts："
       cat ../../hosts-fragment.txt
     EOT
   }

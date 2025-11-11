@@ -1,4 +1,4 @@
-# Patch to force Loki deployment to master-3 and use topolvm
+# Patch to deploy Loki to app-worker node and use topolvm
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -7,7 +7,7 @@ spec:
   template:
     spec:
       nodeSelector:
-        node-role.kubernetes.io/workload-loki: "true"
+        node-role.kubernetes.io/workload-apps: "true"
       tolerations:
         - key: "node-role.kubernetes.io/control-plane"
           operator: "Exists"

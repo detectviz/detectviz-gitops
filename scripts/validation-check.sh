@@ -184,7 +184,7 @@ validate_final() {
     # 🔍 雙重強化檢查：ArgoCD 功能測試
     validate "ArgoCD 核心組件運行正常" "$kubectl_cmd get pods -n argocd | grep -E '(dex-server|applicationset-controller|notifications-controller|repo-server|server)' | grep Running | wc -l | xargs test 5 -le"
     validate "ArgoCD 根應用已創建" "$kubectl_cmd get applications -n argocd 2>/dev/null | grep -q 'root-argocd-app'"
-    validate "ArgoCD Web UI 可訪問" "curl -k --connect-timeout 10 -H 'Host: argocd.detectviz.local' https://192.168.0.10 | grep -q 'Argo CD'"  # 使用 VIP
+    validate "ArgoCD Web UI 可訪問" "curl -k --connect-timeout 10 -H 'Host: argocd.detectviz.internal' https://192.168.0.10 | grep -q 'Argo CD'"  # 使用 VIP
 
     # 🔍 雙重強化檢查：External Secrets 功能測試
     validate "External Secrets 資源存在" "$kubectl_cmd get externalsecrets -n detectviz 2>/dev/null | wc -l | xargs test 0 -le"

@@ -1,0 +1,38 @@
+# Ingress-Nginx Configuration for L7 Load Balancing
+# 根據 README.md 架構，Ingress Controller 部署到 app-worker 節點
+# 使用 LoadBalancer Service 搭配 MetalLB 提供 VIP 192.168.0.10
+ingress-nginx:
+  controller:
+    kind: Deployment
+
+    # 強制部署到 app-worker 節點以符合架構設計
+    nodeSelector:
+      node-role.kubernetes.io/workload-apps: "true"
+
+    # Tolerations 由 overlays/ingress-nginx-controller-tolerations.yaml 提供
+
+    # 啟用 LoadBalancer Service，MetalLB 會自動分配 VIP
+    service:
+      enabled: true
+      type: LoadBalancer
+      # MetalLB 會透過 annotations 分配 192.168.0.10
+      # 實際配置在 overlays/ingress-nginx-service.yaml
+
+    # 禁用 hostPort 模式
+    hostPort:
+      enabled: false
+
+    # 啟用 metrics 供 Prometheus 抓取
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: true
+
+    # 資源限制
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi

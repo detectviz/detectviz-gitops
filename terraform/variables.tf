@@ -62,9 +62,9 @@ variable "proxmox_mtu" {
 }
 
 variable "k8s_overlay_bridge" {
-  description = "Kubernetes Overlay 網路橋接器（階段一：同主網路）"
+  description = "Kubernetes 內部集群網路橋接器（節點間通訊）"
   type        = string
-  default     = "vmbr0"
+  default     = "vmbr1"
 }
 
 # ============================================
@@ -125,9 +125,15 @@ variable "master_disk_size" {
 }
 
 variable "master_ips" {
-  description = "Master 節點 IP 位址清單"
+  description = "Master 節點外部網路 IP 位址清單 (vmbr0)"
   type        = list(string)
   default     = ["192.168.0.11", "192.168.0.12", "192.168.0.13"]
+}
+
+variable "master_internal_ips" {
+  description = "Master 節點內部集群網路 IP 位址清單 (vmbr1)"
+  type        = list(string)
+  default     = ["10.0.0.11", "10.0.0.12", "10.0.0.13"]
 }
 
 variable "master_hostnames" {
@@ -173,18 +179,30 @@ variable "worker_data_disks" {
 }
 
 variable "worker_ips" {
-  description = "Worker 節點 IP 位址清單"
+  description = "Worker 節點外部網路 IP 位址清單 (vmbr0)"
   type        = list(string)
   default     = ["192.168.0.14"]
+}
+
+variable "worker_internal_ips" {
+  description = "Worker 節點內部集群網路 IP 位址清單 (vmbr1)"
+  type        = list(string)
+  default     = ["10.0.0.14"]
 }
 
 # ============================================
 # 網路配置
 # ============================================
 variable "domain" {
-  description = "內部域名"
+  description = "外部域名 (管理/應用)"
   type        = string
   default     = "detectviz.internal"
+}
+
+variable "cluster_domain" {
+  description = "集群內部域名 (Kubernetes 節點間通訊)"
+  type        = string
+  default     = "cluster.internal"
 }
 
 variable "gateway" {
@@ -194,7 +212,13 @@ variable "gateway" {
 }
 
 variable "nameserver" {
-  description = "DNS 伺服器"
+  description = "主 DNS 伺服器 (Proxmox dnsmasq)"
+  type        = string
+  default     = "192.168.0.2"
+}
+
+variable "nameserver_fallback" {
+  description = "備用 DNS 伺服器"
   type        = string
   default     = "8.8.8.8"
 }

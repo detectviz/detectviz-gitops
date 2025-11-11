@@ -1,5 +1,5 @@
-# Configure Network Interfaces for Single-Network Architecture (Phase 1)
-# 配置網路介面以支援單網路架構 (管理網路 + Kubernetes Overlay)
+# Configure Network Interfaces for Dual-Network Architecture
+# 配置網路介面以支援雙網路架構 (vmbr0 外部網路 + vmbr1 內部集群網路)
 
 - name: Ensure network configuration directory exists (確保網路配置目錄存在)
   ansible.builtin.file:
@@ -21,30 +21,45 @@
   become: true
   changed_when: false
 
-- name: Set MTU for network interface (設定網路介面 MTU)
+- name: Set MTU for external network interface (設定外部網路介面 MTU - ens18)
   ansible.builtin.command: >
     ip link set ens18 mtu {{ network_mtu | default(1500) }}
   become: true
   ignore_errors: true
   changed_when: false
 
-- name: Verify network interface status (驗證網路介面狀態)
+- name: Set MTU for internal cluster network interface (設定內部集群網路介面 MTU - ens19)
+  ansible.builtin.command: >
+    ip link set ens19 mtu {{ network_mtu | default(1500) }}
+  become: true
+  ignore_errors: true
+  changed_when: false
+
+- name: Verify external network interface status (驗證外部網路介面狀態 - ens18)
   ansible.builtin.command: ip addr show ens18
-  register: network_status
+  register: network_status_external
+  changed_when: false
+
+- name: Verify internal cluster network interface status (驗證內部集群網路介面狀態 - ens19)
+  ansible.builtin.command: ip addr show ens19
+  register: network_status_internal
   changed_when: false
 
 - name: Display network configuration result (顯示網路配置結果)
   ansible.builtin.debug:
     msg: |
       ========================================
-      Network Configuration Applied (網路配置已應用)
+      Dual-Network Configuration Applied (雙網路配置已應用)
       ========================================
 
       Node: {{ inventory_hostname }}
       Role: {{ 'Worker' if 'workers' in group_names else 'Master' }}
 
-      Network Interfaces: (網路介面)
-      {{ network_status.stdout }}
+      External Network Interface (ens18 - vmbr0):
+      {{ network_status_external.stdout }}
+
+      Internal Cluster Network Interface (ens19 - vmbr1):
+      {{ network_status_internal.stdout }}
 
       MTU: {{ network_mtu | default(1500) }}
 

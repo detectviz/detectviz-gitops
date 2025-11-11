@@ -1,0 +1,21 @@
+# NGINX Ingress Controller Upstream Manifest
+# Source: https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.1/deploy/static/provider/cloud/deploy.yaml
+# Version: v1.10.1
+# Downloaded: 2024-11-12
+#
+# This file contains the upstream NGINX Ingress Controller manifest.
+# Use overlays/ to customize for DetectViz cluster.
+
+# Placeholder - Download upstream manifest:
+# kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.1/deploy/static/provider/cloud/deploy.yaml --dry-run=client -o yaml > ingress-nginx-upstream.yaml
+
+---
+# To be replaced with actual upstream YAML
+# For now, use Helm Chart approach via kustomization
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ingress-nginx
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/instance: ingress-nginx

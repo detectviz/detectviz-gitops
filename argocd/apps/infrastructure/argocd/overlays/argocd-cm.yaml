@@ -8,7 +8,7 @@ metadata:
     app.kubernetes.io/part-of: argocd
 data:
   # Argo CD 對外暴露的基本 URL - 根據實際域名修改
-  url: https://argocd.detectviz.local
+  url: https://argocd.detectviz.internal
 
   # 啟用應用程式狀態徽章功能
   statusbadge.enabled: "true"
@@ -49,7 +49,7 @@ data:
 
   # Dex SSO 配置 - 使用 GitHub App
   dex.config: |
-    issuer: https://argocd.detectviz.local/api/dex
+    issuer: https://argocd.detectviz.internal/api/dex
     storage:
       type: memory
     web:
@@ -61,6 +61,6 @@ data:
       config:
         clientID: Iv23liRniVgX4o7RNaFT
         clientSecret: $dex.github.clientSecret
-        redirectURI: https://argocd.detectviz.local/api/dex/callback
+        redirectURI: https://argocd.detectviz.internal/api/dex/callback
         orgs:
         - name: detectviz

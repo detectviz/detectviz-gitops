@@ -1,4 +1,4 @@
-# Patch to force Prometheus deployment to master-1
+# Patch to deploy Prometheus to app-worker node
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -7,13 +7,13 @@ spec:
   template:
     spec:
       nodeSelector:
-        node-role.kubernetes.io/workload-monitoring: "true"
+        node-role.kubernetes.io/workload-apps: "true"
       tolerations:
         - key: "node-role.kubernetes.io/control-plane"
           operator: "Exists"
           effect: "NoSchedule"
 ---
-# Patch for Alertmanager (if managed by Prometheus)
+# Patch for Alertmanager to app-worker node
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -22,7 +22,7 @@ spec:
   template:
     spec:
       nodeSelector:
-        node-role.kubernetes.io/workload-monitoring: "true"
+        node-role.kubernetes.io/workload-apps: "true"
       tolerations:
         - key: "node-role.kubernetes.io/control-plane"
           operator: "Exists"

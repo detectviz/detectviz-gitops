@@ -15,15 +15,17 @@ spec:
     - list:
         elements:
           - appName: cert-manager
-            path: apps/cert-manager/overlays
+            path: apps/infrastructure/cert-manager/overlays
           - appName: metallb
-            path: apps/metallb/overlays
+            path: apps/infrastructure/metallb/overlays
+          - appName: ingress-nginx
+            path: apps/infrastructure/ingress-nginx/overlays
           - appName: topolvm
-            path: apps/topolvm/overlays
+            path: apps/infrastructure/topolvm/overlays
           - appName: external-secrets-operator
-            path: apps/external-secrets-operator/overlays
+            path: apps/infrastructure/external-secrets-operator/overlays
           - appName: vault
-            path: apps/vault/overlays
+            path: apps/infrastructure/vault/overlays
 
   template:
     metadata:
@@ -44,7 +46,7 @@ spec:
 
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{if eq .appName "cert-manager"}}cert-manager{{else if eq .appName "metallb"}}metallb-system{{else if eq .appName "external-secrets-operator"}}external-secrets-system{{else if eq .appName "topolvm"}}kube-system{{else if eq .appName "vault"}}vault{{else if eq .appName "argocd"}}argocd{{else}}{{.appName}}{{end}}'
+        namespace: '{{if eq .appName "cert-manager"}}cert-manager{{else if eq .appName "metallb"}}metallb-system{{else if eq .appName "ingress-nginx"}}ingress-nginx{{else if eq .appName "external-secrets-operator"}}external-secrets-system{{else if eq .appName "topolvm"}}kube-system{{else if eq .appName "vault"}}vault{{else if eq .appName "argocd"}}argocd{{else}}{{.appName}}{{end}}'
 
       syncPolicy:
         automated:
