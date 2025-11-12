@@ -1,6 +1,6 @@
-# Root Argo CD Application
-# This is the entry point for the entire GitOps structure.
-# It manages all ApplicationSets.
+# 根應用程式 (Root Application)
+# 這是整個 GitOps 架構的進入點，負責管理所有的 ApplicationSets。
+# 根據 Argo CD 最佳實踐，建议將 targetRevision 釘選在特定分支，例如 `main`，以確保部署的穩定性。
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -11,7 +11,7 @@ spec:
   source:
     repoURL: 'git@github.com:detectviz/detectviz-gitops.git'
     path: argocd/appsets
-    targetRevision: HEAD
+    targetRevision: main # 釘選到 main 分支以確保部署穩定性
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

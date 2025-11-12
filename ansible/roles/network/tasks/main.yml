@@ -1,12 +1,13 @@
-# Detectviz Platform - Network Role
-# 用途：配置雙網路架構支援 Kubernetes 集群
-# 適用於：所有 Kubernetes 節點
+---
+- name: Configure netplan for dual network interfaces
+  become: true
+  ansible.builtin.template:
+    src: netplan-50-custom-network.yaml.j2
+    dest: /etc/netplan/50-custom-network.yaml
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Apply netplan configuration
 
-- name: Configure Network Interfaces for Dual-Network Support (配置網路介面以支援雙網路架構)
-  ansible.builtin.include_tasks: configure-interfaces.yml
-
-- name: Configure /etc/hosts with cluster.internal naming (配置 /etc/hosts 包含 cluster.internal 域名)
-  ansible.builtin.include_tasks: configure-hosts.yml
-
-- name: Configure sysctl parameters for Kubernetes networking (配置 Kubernetes 網路 sysctl 參數)
-  ansible.builtin.include_tasks: configure-sysctl.yml
+- name: Ensure netplan configuration is applied
+  meta: flush_handlers

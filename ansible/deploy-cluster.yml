@@ -1,19 +1,46 @@
 ---
-- name: Prepare all nodes for Kubernetes installation (準備所有節點進行 Kubernetes 安裝)
+# ==============================================================================
+# Detectviz Platform - Ansible 主部署劇本 (Main Playbook)
+#
+# 執行順序：
+# 1.  **前置準備 (Pre-flight)**: 確保 `yq` 工具已安裝。
+# 2.  **節點初始化 (Common)**: 在所有節點上執行系統更新、安裝必要套件。
+# 3.  **網路配置 (Network)**: 設定雙網路介面、MTU 及 hosts。
+# 4.  **Master 節點部署 (Master)**: 初始化 Kubernetes 控制平面、安裝 CNI。
+# 5.  **Worker 節點部署 (Worker)**: 將工作節點加入集群。
+# 6.  **節點標籤 (Node Labels)**: 為特定節點添加標籤，用於工作負載調度。
+# 7.  **ArgoCD 部署 (ArgoCD)**: 安裝並設定 ArgoCD GitOps 引擎。
+# 8.  **最終驗證 (Validation)**: 檢查集群狀態並顯示部署摘要。
+#
+# ==============================================================================
+
+- name: "[Pre-flight] Ensure yq is installed on the control machine"
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: false
+  tasks:
+    - name: "Install yq"
+      ansible.builtin.apt:
+        name: yq
+        state: present
+        update_cache: yes
+
+- name: "[Phase 1] Prepare all nodes for Kubernetes installation (節點初始化)"
   hosts: k8s_cluster
   become: true
   gather_facts: true
   roles:
     - role: common
 
-- name: Configure Multi-Network Architecture (配置多網路架構)
+- name: "[Phase 2] Configure Multi-Network Architecture (網路配置)"
   hosts: k8s_cluster
   become: true
   gather_facts: false
   roles:
     - role: network
 
-- name: Initialize and join control plane nodes (初始化並加入控制平面節點)
+- name: "[Phase 3] Initialize and join control plane nodes (Master 節點部署)"
   hosts: masters
   become: true
   gather_facts: true
@@ -21,77 +48,30 @@
   roles:
     - role: master
 
-- name: Join worker nodes to the cluster (將工作節點加入集群)
+- name: "[Phase 4] Join worker nodes to the cluster (Worker 節點部署)"
   hosts: workers
   become: true
   gather_facts: true
   roles:
     - role: worker
 
-- name: "[P2.5] Apply Node Labels ([P2.5] 加入節點標籤)"
+- name: "[Phase 5] Apply Node Labels (節點標籤)"
   hosts: masters[0]
   become: false
   gather_facts: false
   tasks:
-    - name: Label master-1 for Prometheus (為 master-1 節點添加 Prometheus 標籤)
+    - name: "Label nodes for specific workloads (為節點添加標籤)"
       ansible.builtin.command: >
-        kubectl label node master-1
-        node-role.kubernetes.io/workload-monitoring=true
-        --overwrite
+        kubectl label node {{ item.name }} {{ item.label }} --overwrite
+      loop:
+        - { name: "master-1", label: "node-role.kubernetes.io/workload-monitoring=true" }
+        - { name: "master-2", label: "node-role.kubernetes.io/workload-mimir=true" }
+        - { name: "master-3", label: "node-role.kubernetes.io/workload-loki=true" }
+        - { name: "app-worker", label: "node-role.kubernetes.io/workload-apps=true" }
       changed_when: true
+      ignore_errors: true
 
-    - name: Label master-2 for Mimir (為 master-2 節點添加 Mimir 標籤)
-      ansible.builtin.command: >
-        kubectl label node master-2
-        node-role.kubernetes.io/workload-mimir=true
-        --overwrite
-      changed_when: true
-
-    - name: Label master-3 for Loki (為 master-3 節點添加 Loki 標籤)
-      ansible.builtin.command: >
-        kubectl label node master-3
-        node-role.kubernetes.io/workload-loki=true
-        --overwrite
-      changed_when: true
-
-    - name: Label app-worker for Applications (為 app-worker 節點添加應用標籤)
-      ansible.builtin.command: >
-        kubectl label node app-worker
-        node-role.kubernetes.io/workload-apps=true
-        --overwrite
-      changed_when: true
-
-- name: "[P2.5] Install ArgoCD with SSH Key Injection ([P2.5] 安裝 ArgoCD 與注入 SSH 密鑰)"
-  hosts: masters[0]
-  become: false
-  gather_facts: false
-  vars:
-    gitops_ssh_key_path: "secrets/id_gitops"
-  tasks:
-    - name: Ensure ArgoCD namespace exists (確保 ArgoCD 命名空間存在)
-      kubernetes.core.k8s:
-        name: argocd
-        api_version: v1
-        kind: Namespace
-        state: present
-
-    - name: Create ArgoCD SSH Secret (建立 ArgoCD SSH Secret)
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          apiVersion: v1
-          kind: Secret
-          metadata:
-            name: argocd-ssh-creds
-            namespace: argocd
-            labels:
-              argocd.argoproj.io/secret-type: repository
-          type: Opaque
-          data:
-            sshPrivateKey: "{{ lookup('file', gitops_ssh_key_path) | b64encode }}"
-            url: "git@github.com:detectviz/detectviz-gitops.git"
-
-- name: "[P3] GitOps Bootstrap ([P3] GitOps 啟動程序 Bootstrap)"
+- name: "[Phase 6] Install ArgoCD and Bootstrap GitOps (ArgoCD 部署)"
   hosts: masters[0]
   become: false
   gather_facts: false
@@ -100,17 +80,22 @@
     argocd_node_selector:
       node-role.kubernetes.io/workload-apps: "true"
   tasks:
-    - name: Download ArgoCD install manifest (下載 ArgoCD 安裝清單)
+    - name: "Ensure ArgoCD namespace exists (確保 ArgoCD 命名空間存在)"
+      kubernetes.core.k8s:
+        name: argocd
+        api_version: v1
+        kind: Namespace
+        state: present
+
+    - name: "Download ArgoCD install manifest (下載 ArgoCD 安裝清單)"
       ansible.builtin.get_url:
         url: "{{ argocd_install_manifest }}"
         dest: "/tmp/argocd-install.yaml"
         mode: "0644"
 
-    - name: Add nodeSelector to ArgoCD core components (為 ArgoCD 核心組件添加 nodeSelector)
+    - name: "Add nodeSelector to ArgoCD components (為 ArgoCD 組件添加 nodeSelector)"
       ansible.builtin.shell: |
-        # 使用 yq 為指定的 ArgoCD 組件添加 nodeSelector
-        yq eval 'select(.kind == "{{ item.kind }}" and .metadata.name == "{{ item.name }}").spec.template.spec.nodeSelector = {{ argocd_node_selector | to_json }}' \
-          -i "/tmp/argocd-install.yaml"
+        yq eval 'select(.kind == "{{ item.kind }}" and .metadata.name == "{{ item.name }}").spec.template.spec.nodeSelector = {{ argocd_node_selector | to_json }}' -i "/tmp/argocd-install.yaml"
       args:
         executable: /bin/bash
       loop:
@@ -120,7 +105,7 @@
         - { kind: "Deployment", name: "argocd-server" }
         - { kind: "StatefulSet", name: "argocd-application-controller" }
 
-    - name: Apply ArgoCD install manifest (應用 ArgoCD 安裝清單)
+    - name: "Apply ArgoCD install manifest (應用 ArgoCD 安裝清單)"
       kubernetes.core.k8s:
         state: present
         src: "/tmp/argocd-install.yaml"
@@ -128,105 +113,45 @@
         wait: yes
         timeout: 300
 
-    - name: "[P3] Bootstrap ArgoCD Root Application (App-of-Apps) ([P3] ArgoCD 啟動加入 k8s 任務 Root Application (App-of-Apps))"
+    - name: "Bootstrap ArgoCD Root Application (啟動 ArgoCD 根應用程式)"
       kubernetes.core.k8s:
         state: present
         src: "{{ playbook_dir }}/../argocd/root-argocd-app.yaml"
         namespace: argocd
 
-- name: Fix VM hostnames if needed (修復 VM 主機名如有需要)
-  hosts: k8s_cluster
-  become: true
-  gather_facts: false
-  tasks:
-    - name: Check and fix hostname for master nodes (檢查並修復 master 節點的主機名)
-      ansible.builtin.command: >
-        hostname | grep -q "master-" || (
-          case $(hostname) in
-            vm-1) NEW_HOSTNAME="master-1" ;;
-            vm-2) NEW_HOSTNAME="master-2" ;;
-            vm-3) NEW_HOSTNAME="master-3" ;;
-            *) NEW_HOSTNAME=$(hostname) ;;
-          esac
-          sudo hostnamectl set-hostname "$NEW_HOSTNAME.{{ domain }}"
-          echo "127.0.0.1 $NEW_HOSTNAME.{{ domain }} $NEW_HOSTNAME" | sudo tee -a /etc/hosts
-          echo "Fixed hostname to $NEW_HOSTNAME"
-        )
-      changed_when: false
-      when: "'masters' in group_names"
-
-- name: Validate Kubernetes Cluster Deployment (驗證 Kubernetes 集群部署)
+- name: "[Phase 7] Validate Kubernetes Cluster Deployment (最終驗證)"
   hosts: masters[0]
   become: false
   gather_facts: false
   tasks:
-    - name: Wait for all nodes to be in Ready state (等待所有節點處於 Ready 狀態)
+    - name: "Wait for all nodes to be in Ready state (等待所有節點進入 Ready 狀態)"
       ansible.builtin.command: kubectl wait --for=condition=Ready node --all --timeout=5m
       changed_when: false
 
-    - name: Get final cluster node status (獲取最終集群節點狀態)
+    - name: "Get final cluster node status (獲取最終集群節點狀態)"
       ansible.builtin.command: kubectl get nodes -o wide
       register: cluster_status
       changed_when: false
 
-    - name: Display cluster deployment completion message
+    - name: "Display deployment completion summary (顯示部署摘要)"
       ansible.builtin.debug:
         msg: |
-          🎉 Detectviz Kubernetes Cluster Deployment Completed! 🎉
+          ======================================================================
+          🎉 DetectViz Kubernetes Cluster Deployment Completed Successfully! 🎉
+          ======================================================================
 
-          Installed Components:
-          Kubernetes Cluster ({{ (cluster_status.stdout_lines | length) - 1 }} nodes)
-          [✓] Calico CNI Networking
-          [✓] Kube-VIP for Control Plane HA
-          [✓] ArgoCD GitOps Engine (Bootstrapped)
-
-          Cluster Status:
+          Kubernetes Version: {{ kubernetes_version }}
+          Cluster Nodes:
           {{ cluster_status.stdout }}
-
-          Next Steps:
-          1. Verify Vault manual unseal and setup process.
-          2. Manually sync P5 applications in ArgoCD UI.
-          3. Monitor GitOps sync status: `argocd app list`
-
-    - name: "[P6] Final cluster health check"
-      ansible.builtin.command: |
-        echo "=== Final Cluster Health Report ==="
-        echo "Nodes:"
-        kubectl get nodes -o wide
-        echo ""
-        echo "System pods (non-running):"
-        kubectl get pods -A --field-selector=status.phase!=Running 2>/dev/null | head -10 || echo "All system pods running"
-        echo ""
-        echo "Recent events:"
-        kubectl get events --sort-by=.lastTimestamp | tail -5
-      become: false
-      register: final_health
-      changed_when: false
-      failed_when: false
-
-    - name: "[P6] Display deployment completion summary"
-      ansible.builtin.debug:
-        msg: |
-          ============================================
-          🎉 DetectViz Kubernetes Deployment Complete!
-          ============================================
-
-          Final Status: {{ final_health.stdout | default('Health check completed') }}
 
           Access Points:
           • Kubernetes API: https://{{ control_plane_vip }}:6443
-          • ArgoCD UI: https://argocd.detectviz.internal
-          • Grafana: https://grafana.detectviz.local
-          • Keycloak: https://keycloak.detectviz.local
-
-          Management Commands:
-          • kubectl --kubeconfig=kubeconfig/admin.conf get nodes
-          • argocd login argocd.detectviz.internal
-          • argocd app list
+          • ArgoCD UI:      https://argocd.{{ domain }}
+          • Grafana:        https://grafana.{{ domain }}
 
           Next Steps:
-          1. Complete Vault initialization (unseal manually)
-          2. Sync P5 applications in ArgoCD UI
-          3. Verify application workloads are running
-          ============================================
-      when: final_health is defined
+          1.  **Vault Initialization**: Manually unseal Vault instances.
+          2.  **ArgoCD Sync**: Log in to ArgoCD UI and sync the applications.
+          3.  **Verify Workloads**: Check if all application pods are running correctly.
+
+          ======================================================================
