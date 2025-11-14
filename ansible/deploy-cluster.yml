@@ -375,8 +375,8 @@
 
           Access Points:
           • Kubernetes API: https://{{ control_plane_vip }}:6443
-          • ArgoCD UI:      https://argocd.{{ domain }}
-          • Grafana:        https://grafana.{{ domain }}
+          • ArgoCD UI:      https://argocd.detectviz.internal (或 kubectl port-forward)
+          • Grafana:        https://grafana.detectviz.internal
 
           Next Steps:
           1.  **Vault Initialization**: Manually unseal Vault instances.
