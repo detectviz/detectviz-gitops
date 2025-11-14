@@ -102,6 +102,39 @@
 
 ---
 
+## 已解決的"雞生蛋"依賴問題
+
+本部署流程已完整解決以下循環依賴問題（詳見[故障排除](#故障排除)章節）：
+
+### 問題 #1: ApplicationSet 路徑配置
+- **症狀**: ArgoCD 無法找到應用路徑
+- **解決方案**: ✅ 所有 ApplicationSet 路徑已包含 `argocd/` 前綴
+- **驗證**: `argocd/appsets/appset.yaml` 已修正
+
+### 問題 #2: AppProject 權限白名單
+- **症狀**: 基礎設施應用無法創建 Namespace 或 IngressClass
+- **解決方案**: ✅ `platform-bootstrap` 項目已包含所有必要資源權限
+- **驗證**: `argocd/bootstrap/argocd-projects.yaml` 已配置完整
+
+### 問題 #3: CRD 依賴順序
+- **症狀**: cluster-bootstrap 嘗試創建 Certificate 但 cert-manager CRD 尚未安裝
+- **解決方案**: ✅ 使用 Sync Wave 分階段部署 + `SkipDryRunOnMissingResource=true`
+- **預期行為**: cluster-bootstrap Phase 2 會先失敗，待基礎設施同步後自動重試成功
+- **驗證**: 基礎設施同步後 cluster-bootstrap 自動變為 Synced
+
+### 問題 #4: TopoLVM 調度模式
+- **症狀**: Vault pods 顯示 "Insufficient capacity" 但實際有足夠空間
+- **根本原因**: Scheduler Extender 模式未完整配置
+- **解決方案**: ✅ 改用 Storage Capacity Tracking 模式（Kubernetes 1.21+ 原生）
+- **驗證**: `argocd/apps/infrastructure/topolvm/overlays/values.yaml` 已啟用 `storageCapacityTracking`
+
+**部署建議**:
+- ⚠️ **cluster-bootstrap 顯示 OutOfSync 是正常的**，在基礎設施同步前會持續此狀態
+- ✅ **所有配置文件已修正**，無需手動調整
+- 📋 **遵循本文件步驟**，問題會自動解決
+
+---
+
 ## 目錄
 
 - [前置作業](#前置作業)
@@ -445,7 +478,47 @@ ssh ubuntu@192.168.0.14 'sudo vgs && sudo pvs'
 > - 如果 VG 已存在,會自動跳過 (ignore_errors: true)
 > - 可透過設定 `configure_lvm: false` 停用自動 LVM 配置
 
-#### 1.5 檢查生成的文件
+#### 1.5 TopoLVM Storage Capacity 模式配置
+
+**重要**: TopoLVM 使用 **Storage Capacity Tracking** 模式（Kubernetes 1.21+ 原生功能），而非舊的 Scheduler Extender 模式。
+
+**配置檔案**: `argocd/apps/infrastructure/topolvm/overlays/values.yaml`
+
+```yaml
+scheduler:
+  enabled: false  # 禁用 scheduler extender (不需要)
+
+controller:
+  storageCapacityTracking:
+    enabled: true  # 啟用 CSI Storage Capacity Tracking
+
+webhook:
+  podMutatingWebhook:
+    enabled: false  # Storage Capacity 模式不需要 pod webhook
+```
+
+**Storage Capacity Tracking 優勢**:
+- ✅ Kubernetes 原生功能（1.21+ GA）
+- ✅ 無需配置 kube-scheduler extender
+- ✅ 更簡單、更可靠的調度機制
+- ✅ 自動容量追蹤和報告
+
+**部署後驗證** (在 Phase 4.7 完成後):
+```bash
+# 檢查 CSIStorageCapacity 資源
+kubectl get csistoragecapacity -A
+
+# 檢查 TopoLVM controller 日誌
+kubectl logs -n kube-system -l app.kubernetes.io/component=controller --tail=50
+```
+
+**預期輸出**：
+```
+NAMESPACE      NAME                    STORAGECLASS           CAPACITY
+kube-system    topolvm-<node>-<hash>   topolvm-provisioner    257693843456
+```
+
+#### 1.6 檢查生成的文件
 
 ```bash
 # 回到 terraform 目錄
@@ -839,6 +912,10 @@ kubectl get crd | grep cert-manager
 # 檢查 cluster-bootstrap 狀態 (應該自動重試並成功)
 kubectl get application cluster-bootstrap -n argocd
 # 預期: Synced, Healthy (Phase 2 資源已部署)
+
+# 驗證 TopoLVM CSIStorageCapacity 資源
+kubectl get csistoragecapacity -A
+# 預期: 應該看到 topolvm-provisioner 的容量資源
 ```
 
 **預期結果**：
@@ -849,7 +926,27 @@ kubectl get application cluster-bootstrap -n argocd
 - ✅ NGINX Ingress 運行中 (Ingress 控制器)
 - ✅ External Secrets 運行中 (Secret 管理)
 - ✅ Vault 運行中 (密鑰管理,待初始化)
-- ✅ TopoLVM 運行中 (動態 PV 提供)
+- ✅ TopoLVM 運行中 (動態 PV 提供，使用 Storage Capacity Tracking)
+
+**常見問題處理**:
+
+如果基礎設施 Applications 顯示 `OutOfSync` 或 `Unknown` 但不自動同步：
+
+```bash
+# 1. 檢查 ArgoCD repo-server 日誌
+kubectl logs -n argocd -l app.kubernetes.io/name=argocd-repo-server --tail=50
+
+# 2. 如果看到路徑錯誤，確認 ApplicationSet 配置正確
+kubectl get applicationset detectviz-gitops -n argocd -o yaml | grep path
+
+# 3. 手動觸發 root application 刷新
+kubectl patch application root -n argocd \
+  -p='{"metadata":{"annotations":{"argocd.argoproj.io/refresh":"hard"}}}' \
+  --type=merge
+
+# 4. 等待 30 秒後檢查狀態
+sleep 30 && kubectl get applications -n argocd
+```
 
 ---
 
@@ -1139,7 +1236,198 @@ argocd app delete <app-name>
 argocd app create <app-name> ...
 ```
 
-#### 6. MTU 問題
+#### 6. ApplicationSet 路徑錯誤（雞生蛋問題 #1）
+
+**症狀**:
+```
+ComparisonError: Failed to load target state: failed to generate manifest
+apps/infrastructure/cert-manager/overlays: app path does not exist
+```
+
+**根本原因**: ApplicationSet 生成的應用路徑缺少 `argocd/` 前綴
+
+**診斷**:
+```bash
+# 檢查 Application 的實際路徑
+kubectl get application infra-cert-manager -n argocd -o jsonpath='{.spec.source.path}'
+# 錯誤輸出: apps/infrastructure/cert-manager/overlays
+# 正確輸出: argocd/apps/infrastructure/cert-manager/overlays
+
+# 檢查 ApplicationSet 配置
+kubectl get applicationset detectviz-gitops -n argocd -o yaml | grep -A 2 "path:"
+```
+
+**解決方案**:
+
+1. 修正 `argocd/appsets/appset.yaml`:
+```yaml
+elements:
+  - appName: cert-manager
+    path: argocd/apps/infrastructure/cert-manager/overlays  # 添加 argocd/ 前綴
+```
+
+2. 提交並推送修改
+3. 刷新 root application:
+```bash
+kubectl patch application root -n argocd \
+  -p='{"metadata":{"annotations":{"argocd.argoproj.io/refresh":"hard"}}}' --type=merge
+```
+
+**預防措施**: 所有 ApplicationSet 中的路徑都應包含 `argocd/` 前綴
+
+---
+
+#### 7. AppProject 權限不足（雞生蛋問題 #2）
+
+**症狀**:
+```
+resource :Namespace is not permitted in project platform-bootstrap
+resource :IngressClass is not permitted in project platform-bootstrap
+```
+
+**根本原因**: AppProject `platform-bootstrap` 的 `clusterResourceWhitelist` 缺少必要資源
+
+**診斷**:
+```bash
+# 檢查 Application 錯誤
+kubectl get application infra-cert-manager -n argocd -o yaml | grep -A 10 "conditions:"
+
+# 檢查 AppProject 白名單
+kubectl get appproject platform-bootstrap -n argocd -o yaml | grep -A 20 "clusterResourceWhitelist"
+```
+
+**解決方案**:
+
+修正 `argocd/bootstrap/argocd-projects.yaml`:
+```yaml
+clusterResourceWhitelist:
+  - group: ""
+    kind: Namespace       # 添加 Namespace
+  - group: networking.k8s.io
+    kind: IngressClass    # 添加 IngressClass
+  - group: apiextensions.k8s.io
+    kind: CustomResourceDefinition
+  # ... 其他資源
+```
+
+**預防措施**: 在添加新基礎設施組件前，確認 AppProject 已包含所需的資源類型
+
+---
+
+#### 8. cluster-bootstrap CRD 依賴問題（雞生蛋問題 #3）
+
+**症狀**:
+```
+cluster-bootstrap: OutOfSync, Progressing
+no matches for kind "Certificate" in version "cert-manager.io/v1"
+ensure CRDs are installed first
+```
+
+**根本原因**: cluster-bootstrap Phase 2 資源（Certificates, Ingress）依賴尚未部署的 CRDs
+
+**這是正常且預期的行為！**
+
+**解決方案**（已內建於部署流程）:
+
+1. **Phase 1** (Sync Wave: -10): Namespaces → 立即成功 ✅
+2. **Phase 2** (Sync Wave: 10): Certificates, Ingress → 失敗（CRDs 不存在）⚠️
+3. **手動同步基礎設施**: cert-manager, ingress-nginx → CRDs 安裝 ✅
+4. **Phase 2 自動重試**: Certificates, Ingress → 成功 ✅
+
+**驗證**:
+```bash
+# 基礎設施同步前
+kubectl get application cluster-bootstrap -n argocd
+# 預期: OutOfSync, Progressing ⚠️ 這是正常的!
+
+# 基礎設施同步後
+kubectl get application cluster-bootstrap -n argocd
+# 預期: Synced, Healthy ✅
+```
+
+**關鍵設定**（已配置）:
+```yaml
+# argocd/bootstrap/manifests/*.yaml
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "10"  # 延後部署
+```
+
+---
+
+#### 9. TopoLVM Pod 無法調度（雞生蛋問題 #4）
+
+**症狀**:
+```
+Vault pods: Pending
+Events: 0/1 nodes are available: 1 Insufficient topolvm.io/capacity
+實際節點容量: 240GB
+需求: 45GB
+```
+
+**根本原因**: 使用 Scheduler Extender 模式但 kube-scheduler 未配置 extender endpoint
+
+**診斷**:
+```bash
+# 檢查 Pod 資源請求
+kubectl get pod vault-0 -n vault -o yaml | grep "topolvm.io/capacity"
+# 錯誤: topolvm.io/capacity: "1"  (僅 1 byte!)
+
+# 檢查節點 annotation
+kubectl get node app-worker -o jsonpath='{.metadata.annotations}' | grep topolvm
+# 正確: capacity.topolvm.io/00default: "257693843456"  (240GB)
+
+# 檢查 CSIStorageCapacity 資源
+kubectl get csistoragecapacity -A
+# 舊模式: No resources found  ❌
+# 新模式: 應該顯示 topolvm 容量 ✅
+```
+
+**解決方案**（已實施）:
+
+改用 **Storage Capacity Tracking** 模式（`argocd/apps/infrastructure/topolvm/overlays/values.yaml`）:
+
+```yaml
+scheduler:
+  enabled: false  # 禁用 scheduler extender
+
+controller:
+  storageCapacityTracking:
+    enabled: true  # 啟用 Storage Capacity Tracking
+
+webhook:
+  podMutatingWebhook:
+    enabled: false  # 不需要 pod webhook
+```
+
+**重新部署後驗證**:
+```bash
+# 1. 檢查 CSIStorageCapacity 資源
+kubectl get csistoragecapacity -A
+# 預期: 應該看到 topolvm-provisioner 的容量資源
+
+# 2. 檢查 topolvm-scheduler DaemonSet 不應存在
+kubectl get daemonset -n kube-system topolvm-scheduler
+# 預期: Error from server (NotFound)  ✅
+
+# 3. 刪除舊 Vault pods 讓它們重建（清除舊 webhook mutations）
+kubectl delete pod -n vault --all
+
+# 4. 檢查新 pods 是否成功調度
+kubectl get pods -n vault -o wide
+# 預期: Running 狀態，調度到 app-worker
+```
+
+**為什麼這個方案更好**:
+- ✅ Kubernetes 原生功能（1.21+ GA）
+- ✅ 無需修改 kube-scheduler 配置
+- ✅ 自動容量追蹤和更新
+- ✅ 更簡單、更可靠的調度機制
+
+---
+
+#### 10. MTU 問題
 
 **問題**: 設定 MTU 9000 後無法連線或封包丟失
 
