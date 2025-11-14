@@ -26,12 +26,12 @@ lvmd:
   managed: true
   socketName: /run/topolvm/lvmd.sock
 
-  # Device Classes 配置 (對應 app-worker 的 nvme-vg)
+  # Device Classes 配置 (對應 app-worker 的 topolvm-vg)
   deviceClasses:
     - name: ssd
-      volume-group: nvme-vg  # 必須與 app-worker 上建立的 VG 名稱一致
+      volume-group: topolvm-vg  # 必須與 app-worker 上建立的 VG 名稱一致
       default: true
-      spare-gb: 10           # 保留 10GB 空間避免 VG 滿載
+      spare-gb: 10              # 保留 10GB 空間避免 VG 滿載
 
   # 需要特權模式來管理 LVM
   securityContext:
