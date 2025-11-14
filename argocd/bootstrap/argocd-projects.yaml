@@ -86,18 +86,7 @@ metadata:
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
-  description: |
-    Detectviz Platform AppProject - 統一管理監控、平台與 AI 服務的部署範圍與權限控制。
-
-    限制策略:
-    - sourceRepos: 允許 detectviz/detectviz-gitops + 外部 Helm 倉庫 (版本由 CI 校驗)
-    - destinations: 僅允許部署至 monitoring, detectviz, vault, external-secrets-system 命名空間
-    - clusterResourceWhitelist: 僅允許必要的集群級別資源
-    - namespaceResourceWhitelist: 明確列舉允許的資源類型 (最小權限原則)
-
-    變更記錄:
-    - 2025-10-27: 強化 namespaceResourceWhitelist (從 group:*/kind:* 改為明確列舉)
-    - 2025-10-27: 添加 CI 版本校驗機制 (保持外部 Helm 倉庫)
+  description: "Detectviz Platform - 管理監控、平台與 AI 服務的部署範圍與權限控制 (最小權限原則)"
 
   sourceRepos:
     # GitOps 倉庫
