@@ -43,6 +43,8 @@ spec:
         repoURL: git@github.com:detectviz/detectviz-gitops.git
         targetRevision: main
         path: "{{.path}}"
+        kustomize:
+          enableHelm: true
 
       destination:
         server: https://kubernetes.default.svc
