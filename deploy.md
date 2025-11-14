@@ -137,6 +137,17 @@
 - **驗證**: `argocd/apps/infrastructure/vault/overlays/values.yaml` 已添加 `server.affinity` 配置
 - **生產建議**: 多 worker node 環境可考慮改回 `required` 以提高可用性
 
+### 問題 #6: ArgoCD Server URL 配置未生效
+- **症狀**: ArgoCD UI 無法正確顯示 `https://argocd.detectviz.internal` URL,影響 SSO 回調和狀態徽章
+- **根本原因**: ArgoCD 由 Ansible 通過 Helm chart 安裝,`argocd-cm.yaml` 配置從未被應用到實際運行的 ConfigMap
+- **解決方案**: ✅ 啟用 ArgoCD 自我管理配置
+  - 添加 ArgoCD 到 ApplicationSet (`argocd/appsets/appset.yaml`)
+  - 創建 config-only 管理模式（不重新部署 ArgoCD 本身）
+  - 只管理配置文件 (`argocd-cm.yaml`)，避免與 Ansible 安裝衝突
+- **臨時修復**: 已手動 patch ConfigMap: `kubectl patch configmap argocd-cm -n argocd --type merge -p '{"data":{"url":"https://argocd.detectviz.internal"}}'`
+- **驗證**: `argocd/apps/infrastructure/argocd/overlays/kustomization.yaml` 已改為 config-only 模式
+- **影響**: 未來配置變更可通過 GitOps 管理,無需手動操作
+
 **部署建議**:
 - ⚠️ **cluster-bootstrap 顯示 OutOfSync 是正常的**，在基礎設施同步前會持續此狀態
 - ✅ **所有配置文件已修正**，無需手動調整
@@ -855,12 +866,15 @@ kubectl get pods -n topolvm-system
 4. 等待同步完成
 
 **建議同步順序**:
-1. `infra-cert-manager` (優先 - 提供 Certificate CRDs)
-2. `infra-ingress-nginx`
-3. `infra-metallb`
-4. `infra-external-secrets-operator`
-5. `infra-vault`
-6. `infra-topolvm`
+1. `infra-argocd` (ArgoCD 自我配置 - 應用 URL 設定)
+2. `infra-cert-manager` (優先 - 提供 Certificate CRDs)
+3. `infra-ingress-nginx`
+4. `infra-metallb`
+5. `infra-external-secrets-operator`
+6. `infra-vault`
+7. `infra-topolvm`
+
+**注意**: `infra-argocd` 是 ArgoCD 的配置管理應用,會自動出現在 ApplicationSet 中。它不會重新部署 ArgoCD 本身,只管理配置文件（如 server URL）。
 
 **選項 2: 使用命令行同步**
 
@@ -869,7 +883,7 @@ kubectl get pods -n topolvm-system
 ssh ubuntu@192.168.0.11
 
 # 同步所有基礎設施 Applications
-for app in infra-cert-manager infra-ingress-nginx infra-metallb \
+for app in infra-argocd infra-cert-manager infra-ingress-nginx infra-metallb \
            infra-external-secrets-operator infra-vault infra-topolvm; do
   sudo kubectl --kubeconfig=/etc/kubernetes/admin.conf patch application $app -n argocd \
     -p='{"operation":{"initiatedBy":{"username":"admin"},"sync":{"prune":true}}}' \
