@@ -84,6 +84,19 @@ server:
     storageClass: topolvm-provisioner
     accessMode: ReadWriteOnce
 
+  # Pod 反親和性 - 改為 preferred (允許單 node 測試環境)
+  affinity: |
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: {{ template "vault.name" . }}
+                app.kubernetes.io/instance: "{{ .Release.Name }}"
+                component: server
+            topologyKey: kubernetes.io/hostname
+
 # UI 配置
 ui:
   enabled: true
