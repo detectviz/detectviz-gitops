@@ -5785,3 +5785,105 @@ Failed last sync attempt to [2362085def37b8d6dbe61b94f3b70d10b44b020d]: one or m
 ⏺ 看到了!有一個 Service 的狀態是 OutOfSync。這應該就是 ingress-nginx-controller 服務。讓我嘗試另一種方法 - 我需要理解為什麼 Helm chart 產生的服務沒有被創建。
 
   讓我檢查 Helm values 是否正確啟用了服務:
+
+⏺ Read(values.yaml)
+  ⎿  Read 40 lines
+
+⏺ Bash(kubectl get application infra-ingress-nginx -n argocd -o jsonpath='{.status.resources[?(@.kind=="Service")]}' | jq '.')
+  ⎿  {
+       "kind": "Service",
+       "name": "ingress-nginx-controller",
+     … +11 lines (ctrl+o to expand)
+
+⏺ 好!服務在資源列表中,但狀態是 OutOfSync,而且它在集群中根本不存在。這表示 ArgoCD 知道它應該存在,但因為某種原因沒有創建它。
+
+  可能的原因是服務被刪除後,ArgoCD 的同步還在運行中,還沒有重新創建它。讓我等待更長時間,或者手動觸發sync:
+
+⏺ Bash(kubectl get application infra-ingress-nginx -n argocd -o jsonpath='{.status.operationState}' | jq '. | {phase, message, finishedAt}')
+  ⎿  {
+       "phase": "Running",
+       "message": "waiting for healthy state of /Service/ingress-nginx-controller",
+     … +2 lines (ctrl+o to expand)
+
+⏺ Bash(sleep 15 && kubectl get svc ingress-nginx-controller -n ingress-nginx 2>&1)
+  ⎿  Error: Exit code 1
+     Error from server (NotFound): services "ingress-nginx-controller" not found
+
+⏺ 同步還在運行,正在等待 /Service/ingress-nginx-controller 進入健康狀態,但服務根本不存在!這是一個死鎖 - ArgoCD 在等待一個它應該創建但沒有創建的服務。
+
+  這可能是因為之前的 patch 配置有問題。讓我取消當前的同步操作,然後重新把 ingress-nginx-service.yaml patch 添加回來,但這次內容要正確:
+
+⏺ Write(ingress-nginx-service.yaml)
+  ⎿  Updated ingress-nginx-service.yaml with 2 additions and 8 removals
+        1    # NGINX Ingress Controller Service
+        2 -  # Uses LoadBalancer type with MetalLB to expose on VIP 192.168.0.10
+        2 +  # 用於覆蓋 Helm chart 默認的服務配置
+        3 +  # 配置 externalTrafficPolicy 為 Cluster 模式
+        4
+        5    apiVersion: v1
+        6    kind: Service
+        7    metadata:
+        8      name: ingress-nginx-controller
+        9      namespace: ingress-nginx
+       10 -    annotations:
+       11 -      # MetalLB IP pool assignment - 移除以允許 MetalLB 自動分配
+       12 -      # metallb.universe.tf/address-pool: default
+       13 -      # Fixed LoadBalancer IP (VIP) - 移除以避免 MetalLB 相容性問題
+       14 -      # metallb.universe.tf/loadBalancerIPs: 192.168.0.10
+       10    spec:
+       11      type: LoadBalancer
+       12 -    # 改用 Cluster 模式以避免 Local 模式的健康檢查問題
+       13 -    # Local 模式在 MetalLB 環境下會因為 healthCheckNodePort 失敗導致 IP 被撤回
+       12      externalTrafficPolicy: Cluster
+       13      ports:
+       14        - name: http
+
+⏺ Update(kustomization.yaml)
+  ⎿  Updated kustomization.yaml with 1 addition and 1 removal
+       17
+       18    patchesStrategicMerge:
+       19      - ingress-nginx-controller-tolerations.yaml
+       20 -    # ingress-nginx-service.yaml - 移除,改用 values.yaml 中的配置
+       20 +    - ingress-nginx-service.yaml
+       21
+       22    commonLabels:
+       23      app.kubernetes.io/part-of: detectviz-infrastructure
+
+⏺ 好!現在讓我 commit 並推送這些變更:
+
+⏺ Bash(git add -A && git commit -m "fix: Re-add ingress-nginx-service.yaml with correct externalTrafficPolicy…)
+  ⎿  [main 959332d] fix: Re-add ingress-nginx-service.yaml with correct externalTrafficPolicy
+      3 files changed, 235 insertions(+), 11 deletions(-)
+     To https://github.com/detectviz/detectviz-gitops.git
+        8bafac7..959332d  main -> main
+
+⏺ 現在讓我終止當前正在運行的同步操作,然後手動觸發新的同步:
+
+⏺ Bash(kubectl patch application infra-ingress-nginx -n argocd --type json -p='[{"op": "remove", "path": "/operation"}]')
+  ⎿  application.argoproj.io/infra-ingress-nginx patched
+
+⏺ Bash(sleep 3 && kubectl patch application infra-ingress-nginx -n argocd --type merge -p '{"metadata":{"annotations":{"argocd.argoproj.io/refresh":"hard"}}}')
+  ⎿  application.argoproj.io/infra-ingress-nginx patched
+
+⏺ Bash(sleep 15 && kubectl get svc ingress-nginx-controller -n ingress-nginx)
+  ⎿  NAME                       TYPE           CLUSTER-IP       EXTERNAL-IP    PORT(S)                      AGE
+     ingress-nginx-controller   LoadBalancer   10.110.211.240   192.168.0.10   80:31836/TCP,443:30675/TCP   3s
+
+⏺ 🎉 成功了!
+
+  服務已經創建並且 MetalLB 成功分配了 IP 192.168.0.10!
+
+  NAME                       TYPE           CLUSTER-IP       EXTERNAL-IP    PORT(S)
+  ingress-nginx-controller   LoadBalancer   10.110.211.240   192.168.0.10   80:31836/TCP,443:30675/TCP
+
+  現在讓我測試 HTTPS 連接是否可用:
+
+⏺ Bash(curl -k -I https://argocd.detectviz.internal 2>&1 | head -10)
+  ⎿    % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                      Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+     … +6 lines (ctrl+o to expand)
+
+⏺ Bash(kubectl get ingress -n argocd argocd-server)
+  ⎿  NAME            CLASS   HOSTS                       ADDRESS        PORTS     AGE
+     argocd-server   nginx   argocd.detectviz.internal   192.168.0.10   80, 443   6h19m

@@ -148,6 +148,21 @@
 - **驗證**: `argocd/apps/infrastructure/argocd/overlays/kustomization.yaml` 已改為 config-only 模式
 - **影響**: 未來配置變更可通過 GitOps 管理,無需手動操作
 
+### 問題 #7: Ingress-Nginx LoadBalancer 無法分配 IP
+- **症狀**: ingress-nginx-controller 服務 EXTERNAL-IP 為 `<pending>`，無法訪問 https://argocd.detectviz.internal
+- **根本原因**:
+  1. MetalLB IP 池配置不完整（缺少 192.168.0.10）
+  2. 使用 deprecated `spec.loadBalancerIP` 欄位與註解衝突
+  3. `externalTrafficPolicy: Local` 導致健康檢查失敗，IP 被撤回
+- **解決方案**: ✅ 完整修復配置
+  - 添加 `192.168.0.10/32` 到 MetalLB IPAddressPool
+  - 移除 deprecated `spec.loadBalancerIP` 欄位
+  - 使用 `externalTrafficPolicy: Cluster` 模式
+  - 通過 strategic merge patch 正確配置服務
+- **驗證**: EXTERNAL-IP 成功分配為 192.168.0.10，HTTPS 正常訪問
+- **相關文件**: `ingress-nginx-loadbalancer-fix.md`
+- **Commits**: bbab4f2, 16bb52d, 8bafac7, 959332d
+
 **部署建議**:
 - ⚠️ **cluster-bootstrap 顯示 OutOfSync 是正常的**，在基礎設施同步前會持續此狀態
 - ✅ **所有配置文件已修正**，無需手動調整
@@ -1487,6 +1502,195 @@ kubectl get pods -n vault -o wide
 - ✅ 無需修改 kube-scheduler 配置
 - ✅ 自動容量追蹤和更新
 - ✅ 更簡單、更可靠的調度機制
+
+---
+
+#### 11. Ingress-Nginx LoadBalancer 無法分配 IP
+
+**症狀**:
+- ingress-nginx-controller 服務 EXTERNAL-IP 顯示 `<pending>`
+- 無法訪問 https://argocd.detectviz.internal
+- curl 連接被拒絕 (Connection refused)
+- 所有通過 Ingress 暴露的服務都無法訪問
+
+**根本原因**:
+
+1. **MetalLB IP 池配置不完整**: IP 池缺少 `192.168.0.10`
+   ```yaml
+   # 錯誤配置
+   spec:
+     addresses:
+       - 192.168.0.200-192.168.0.220  # 缺少 .10
+   ```
+
+2. **使用 deprecated `spec.loadBalancerIP` 欄位**: 與 MetalLB 註解 `metallb.universe.tf/loadBalancerIPs` 衝突
+   ```
+   MetalLB 錯誤: service can not have both metallb.universe.tf/loadBalancerIPs and svc.Spec.LoadBalancerIP
+   ```
+
+3. **`externalTrafficPolicy: Local` 導致健康檢查失敗**: MetalLB speaker 宣告 IP 後立即撤回
+   ```
+   MetalLB 日誌:
+   "service has IP, announcing" ips=["192.168.0.10"]
+   "withdrawing service announcement" reason="noIPAllocated"
+   ```
+
+**診斷步驟**:
+
+```bash
+# 1. 檢查服務狀態
+kubectl get svc ingress-nginx-controller -n ingress-nginx
+# 症狀: EXTERNAL-IP = <pending>
+
+# 2. 檢查 MetalLB IP 池
+kubectl get ipaddresspool -n metallb-system default-pool -o yaml
+# 檢查是否包含 192.168.0.10
+
+# 3. 檢查 MetalLB speaker 日誌
+kubectl logs -n metallb-system -l component=speaker --tail=50
+# 尋找 "withdrawing service announcement" 或其他錯誤
+
+# 4. 檢查服務配置衝突
+kubectl get svc ingress-nginx-controller -n ingress-nginx -o yaml | grep -E "loadBalancerIP|loadBalancerIPs"
+# 檢查是否同時使用了 spec.loadBalancerIP 和註解
+```
+
+**解決方案**:
+
+1. **添加 `192.168.0.10/32` 到 MetalLB IPAddressPool**:
+
+   編輯 `argocd/apps/infrastructure/metallb/overlays/ipaddresspool.yaml`:
+   ```yaml
+   apiVersion: metallb.io/v1beta1
+   kind: IPAddressPool
+   metadata:
+     name: default-pool
+     namespace: metallb-system
+   spec:
+     addresses:
+       - 192.168.0.10/32  # ✅ 添加 Ingress Controller VIP
+       - 192.168.0.200-192.168.0.220  # 動態 IP 池
+   ```
+
+2. **移除 deprecated `spec.loadBalancerIP` 欄位**:
+
+   編輯 `argocd/apps/infrastructure/ingress-nginx/overlays/ingress-nginx-service.yaml`:
+   ```yaml
+   apiVersion: v1
+   kind: Service
+   metadata:
+     name: ingress-nginx-controller
+     namespace: ingress-nginx
+   spec:
+     type: LoadBalancer
+     # ❌ 移除這一行:
+     # loadBalancerIP: 192.168.0.10
+   ```
+
+3. **使用 `externalTrafficPolicy: Cluster` 模式**:
+
+   編輯 `argocd/apps/infrastructure/ingress-nginx/overlays/ingress-nginx-service.yaml`:
+   ```yaml
+   apiVersion: v1
+   kind: Service
+   metadata:
+     name: ingress-nginx-controller
+     namespace: ingress-nginx
+   spec:
+     type: LoadBalancer
+     externalTrafficPolicy: Cluster  # ✅ 改為 Cluster 模式
+     ports:
+       - name: http
+         port: 80
+         protocol: TCP
+         targetPort: http
+       - name: https
+         port: 443
+         protocol: TCP
+         targetPort: https
+     selector:
+       app.kubernetes.io/name: ingress-nginx
+       app.kubernetes.io/instance: ingress-nginx
+       app.kubernetes.io/component: controller
+   ```
+
+4. **確保 Helm values.yaml 配置一致**:
+
+   編輯 `argocd/apps/infrastructure/ingress-nginx/overlays/values.yaml`:
+   ```yaml
+   ingress-nginx:
+     controller:
+       service:
+         enabled: true
+         type: LoadBalancer
+         externalTrafficPolicy: Cluster  # 與 patch 一致
+   ```
+
+5. **通過 Strategic Merge Patch 正確配置服務**:
+
+   確保 `argocd/apps/infrastructure/ingress-nginx/overlays/kustomization.yaml` 包含:
+   ```yaml
+   patchesStrategicMerge:
+     - ingress-nginx-service.yaml  # 明確的服務配置
+   ```
+
+**驗證修復**:
+
+```bash
+# 1. 同步 MetalLB 配置
+kubectl apply -k argocd/apps/infrastructure/metallb/overlays/
+
+# 2. 同步 Ingress-Nginx 配置
+kubectl apply -k argocd/apps/infrastructure/ingress-nginx/overlays/
+
+# 3. 等待服務重新創建
+kubectl rollout status deployment ingress-nginx-controller -n ingress-nginx
+
+# 4. 檢查 EXTERNAL-IP
+kubectl get svc ingress-nginx-controller -n ingress-nginx
+# 預期: EXTERNAL-IP = 192.168.0.10
+
+# 5. 檢查 Ingress 資源
+kubectl get ingress -n argocd argocd-server
+# 預期: ADDRESS = 192.168.0.10
+
+# 6. 測試 HTTPS 連接
+curl -k -I https://argocd.detectviz.internal
+# 預期: HTTP/2 307 (ArgoCD 重定向)
+
+# 7. 檢查 MetalLB speaker 日誌
+kubectl logs -n metallb-system -l component=speaker --tail=20
+# 預期: "service has IP, announcing" 且沒有 "withdrawing" 訊息
+```
+
+**externalTrafficPolicy 模式對比**:
+
+| 特性 | Local | Cluster |
+|-----|-------|---------|
+| 保留源 IP | ✅ 是 | ❌ 否 (SNAT) |
+| 負載均衡 | 僅本地 Pod | 全集群 Pod |
+| 健康檢查 | 需要 healthCheckNodePort | 不需要 |
+| MetalLB 相容性 | ⚠️ 需要健康檢查通過 | ✅ 無額外要求 |
+| 適用場景 | 生產環境 (需要源 IP) | 測試/開發環境 |
+
+**為何選擇 Cluster 模式**:
+- ✅ 避免 MetalLB L2 模式下的健康檢查問題
+- ✅ 更簡單的配置,無需額外的健康檢查設置
+- ⚠️ 缺點: 無法保留客戶端源 IP (對於 Ingress 通常不重要)
+
+**相關文件**:
+- `ingress-nginx-loadbalancer-fix.md` - 完整修復過程和技術洞察
+- Commits:
+  - `bbab4f2` - "fix: Add 192.168.0.10 to MetalLB IP pool"
+  - `16bb52d` - "fix: Remove deprecated loadBalancerIP field"
+  - `8bafac7` - "fix: Configure externalTrafficPolicy=Cluster"
+  - `959332d` - "fix: Re-add ingress-nginx-service.yaml with correct config"
+
+**預期結果**:
+- ✅ EXTERNAL-IP: 192.168.0.10 成功分配
+- ✅ HTTPS 正常訪問: https://argocd.detectviz.internal
+- ✅ MetalLB 穩定運行,無 IP 撤回問題
+- ✅ 所有 Ingress 資源正常工作
 
 ---
 
