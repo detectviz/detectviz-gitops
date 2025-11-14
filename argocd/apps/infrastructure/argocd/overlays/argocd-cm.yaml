@@ -22,6 +22,9 @@ data:
   # 啟用 Kustomize
   kustomize.enabled: "true"
 
+  # Kustomize 構建選項 - 啟用 Helm 支持
+  kustomize.buildOptions: "--enable-helm"
+
   # 啟用 Jsonnet
   jsonnet.enabled: "true"
 
