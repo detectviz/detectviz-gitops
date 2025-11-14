@@ -360,7 +360,7 @@ cluster_domain      = "cluster.internal"
 worker_system_disk_sizes = ["100G"]    # 系統磁碟 (OS + kubelet)
 worker_data_disks = [
   {
-    size    = "250G"                   # 資料磁碟 (TopoLVM data-vg)
+    size    = "250G"                   # 資料磁碟 (TopoLVM topolvm-vg)
     storage = "nvme-vm"
   }
 ]
@@ -547,7 +547,7 @@ ansible-playbook -i inventory.ini deploy-cluster.yml
    - 將 join 命令動態傳遞給所有 worker 節點
 
 5. **[Phase 4] Worker Role**: 加入工作節點
-   - 配置 LVM Volume Groups (data-vg) 供 TopoLVM 使用
+   - 配置 LVM Volume Groups (topolvm-vg) 供 TopoLVM 使用
    - 使用 Phase 3.5 生成的 join 命令加入集群
    - 等待 kubelet 健康檢查通過
 
