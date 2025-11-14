@@ -37,6 +37,21 @@ lvmd:
   securityContext:
     privileged: true
 
-# --- 4. CertManager (來自你現有 values.yaml) ---
+# --- 4. Scheduler 配置 ---
+# 使用 StorageCapacity Tracking 而非 Scheduler Extender
+scheduler:
+  enabled: false  # 禁用 scheduler extender (DaemonSet)
+
+# --- 5. Controller 配置 ---
+controller:
+  storageCapacityTracking:
+    enabled: true  # 啟用 CSI Storage Capacity Tracking (Kubernetes 1.21+)
+
+# --- 6. Webhook 配置 ---
+webhook:
+  podMutatingWebhook:
+    enabled: false  # StorageCapacity 模式不需要 pod mutating webhook
+
+# --- 7. CertManager (來自你現有 values.yaml) ---
 certManager:
   enabled: true
