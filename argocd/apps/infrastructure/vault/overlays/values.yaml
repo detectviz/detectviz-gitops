@@ -74,14 +74,14 @@ server:
   dataStorage:
     enabled: true
     size: 10Gi
-    storageClass: detectviz-data
+    storageClass: topolvm-provisioner
     accessMode: ReadWriteOnce
 
   # 稽核日誌持久化
   auditStorage:
     enabled: true
     size: 5Gi
-    storageClass: detectviz-data
+    storageClass: topolvm-provisioner
     accessMode: ReadWriteOnce
 
 # UI 配置
