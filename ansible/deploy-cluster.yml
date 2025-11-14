@@ -218,6 +218,7 @@
             --dry-run=client -o yaml
           register: repo_secret_yaml
           changed_when: false
+          become: true
 
         - name: "Apply ArgoCD repository secret (應用 ArgoCD repository secret)"
           kubernetes.core.k8s:
