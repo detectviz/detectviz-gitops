@@ -1,0 +1,94 @@
+# ============================================
+# Containerd 容器運行時配置文件
+# ============================================
+# 用途：為 Kubernetes 提供容器運行時接口 (CRI)
+# 重要：此配置已簡化，移除了不相容的選項，確保與 kubeadm 兼容
+# ============================================
+
+# TOML 配置版本（必須為 2）
+version = 2
+
+# ============================================
+# 插件配置區塊
+# ============================================
+[plugins]
+
+  # CRI 插件：提供 Kubernetes 容器運行時接口
+  [plugins."io.containerd.grpc.v1.cri"]
+
+    # Sandbox 鏡像：Kubernetes Pod 的暫停容器鏡像
+    # 此鏡像用於為每個 Pod 創建網路命名空間
+    # 必須與 kubeadm 使用的版本一致
+    sandbox_image = "{{ containerd_sandbox_image }}"
+
+    # Containerd 核心配置
+    [plugins."io.containerd.grpc.v1.cri".containerd]
+
+      # 快照驅動：overlayfs 是推薦的儲存驅動
+      # 提供分層文件系統，節省磁碟空間
+      snapshotter = "overlayfs"
+
+      # 預設運行時：runc 是標準的 OCI 運行時
+      default_runtime_name = "runc"
+
+      # 運行時配置區塊
+      [plugins."io.containerd.grpc.v1.cri".containerd.runtimes]
+
+        # runc 運行時配置
+        [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+
+          # 運行時類型：io.containerd.runc.v2 是最新版本
+          runtime_type = "io.containerd.runc.v2"
+
+          # runc 選項
+          [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+
+            # 啟用 systemd cgroup 驅動
+            # 重要：Kubernetes 推薦使用 systemd cgroup，與 kubelet 一致
+            # 確保資源限制正確應用
+            SystemdCgroup = true
+
+    # CNI (容器網路接口) 配置
+    [plugins."io.containerd.grpc.v1.cri".cni]
+
+      # CNI 插件二進制文件目錄
+      # Kubernetes 網路插件 (如 Cilium, Calico) 會安裝到此目錄
+      bin_dir = "/opt/cni/bin"
+
+      # CNI 配置文件目錄
+      # 網路插件的配置文件存放位置
+      conf_dir = "/etc/cni/net.d"
+
+    # 容器鏡像倉庫配置
+    [plugins."io.containerd.grpc.v1.cri".registry]
+
+      # 鏡像倉庫鏡像站配置
+      [plugins."io.containerd.grpc.v1.cri".registry.mirrors]
+
+        # Docker Hub 鏡像配置
+        [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
+
+          # 端點列表：使用官方 Docker Hub
+          # 可以添加國內鏡像站加速下載，例如：
+          # endpoint = ["https://dockerhub.azk8s.cn", "https://registry-1.docker.io"]
+          endpoint = ["https://registry-1.docker.io"]
+
+# ============================================
+# 配置說明
+# ============================================
+# 1. 此配置已移除以下不相容選項：
+#    - plugin_dir (已廢棄)
+#    - disable_cdi, image_pull_qps 等過時參數
+#    - 複雜的 registry endpoint 結構（造成 TOML 語法錯誤）
+#
+# 2. 保留的核心功能：
+#    - CRI 支援（Kubernetes 必需）
+#    - systemd cgroup 驅動（推薦配置）
+#    - CNI 網路接口
+#    - 基本的鏡像倉庫配置
+#
+# 3. 驗證配置：
+#    sudo containerd config dump
+#    sudo systemctl restart containerd
+#    sudo systemctl status containerd
+# ============================================

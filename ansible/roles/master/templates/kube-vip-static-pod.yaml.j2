@@ -1,0 +1,155 @@
+# ============================================
+# Kube-VIP 靜態 Pod 配置（高可用 VIP）
+# ============================================
+# 用途：為 Kubernetes Control Plane 提供虛擬 IP (VIP)
+# 部署方式：作為靜態 Pod 在 kubeadm init 之後啟動
+# VIP 地址：{{ cluster_vip }}
+#
+# 重要說明：
+# 1. 此 manifest 會在 kubeadm init 完成後自動部署
+# 2. Kube-VIP 需要 /etc/kubernetes/admin.conf 才能運行
+# 3. 使用 ARP 模式在 eth0 網卡上綁定 VIP
+# ============================================
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-vip
+  namespace: kube-system
+  labels:
+    app: kube-vip
+    tier: control-plane
+spec:
+  # 必須使用主機網路，才能綁定 VIP 到物理網卡
+  hostNetwork: true
+
+  # 優先級：確保此 Pod 在資源不足時不會被驅逐
+  priorityClassName: system-node-critical
+
+  # Host aliases：添加 kubernetes 主機名解析
+  # 讓 Kube-VIP 可以連接到 Kubernetes API
+  hostAliases:
+  - ip: "192.168.0.11"
+    hostnames:
+    - "kubernetes"
+
+  containers:
+  - name: kube-vip
+    # Kube-VIP 官方鏡像
+    image: ghcr.io/kube-vip/kube-vip:{{ kube_vip_version }}
+    imagePullPolicy: IfNotPresent
+
+    # 啟動參數：使用 manager 模式管理 VIP
+    args:
+    - manager
+
+    # 環境變數配置
+    env:
+    # === 基本 VIP 配置 ===
+
+    # VIP 地址：Control Plane 的虛擬 IP
+    - name: address
+      value: "{{ cluster_vip }}"
+
+    # VIP 網卡：綁定 VIP 的網路介面
+    # 重要：必須是實際存在的網卡名稱（已修正為 eth0）
+    - name: vip_interface
+      value: "eth0"
+
+    # VIP 子網掩碼位數（/24 = 255.255.255.0）
+    - name: vip_cidr
+      value: "24"
+
+    # API Server 端口
+    - name: port
+      value: "6443"
+
+    # === ARP 模式配置 ===
+
+    # 啟用 ARP：使用 ARP 廣播宣告 VIP 位置
+    # ARP 模式適用於 Layer 2 網路（同一網段）
+    - name: vip_arp
+      value: "true"
+
+    # === Control Plane 功能配置 ===
+
+    # 啟用 Control Plane VIP 功能
+    - name: cp_enable
+      value: "true"
+
+    # Control Plane 命名空間
+    - name: cp_namespace
+      value: "kube-system"
+
+    # 停用 Service LoadBalancer 功能（僅用於 Control Plane HA）
+    - name: svc_enable
+      value: "false"
+
+    # === Leader Election 配置 ===
+    # 多個 master 節點透過 leader election 決定誰持有 VIP
+
+    # 啟用 Leader Election
+    - name: vip_leaderelection
+      value: "true"
+
+    # Lease 持續時間（秒）：leader 必須在此時間內更新 lease
+    - name: vip_leaseduration
+      value: "15"
+
+    # Renew 截止時間（秒）：leader 嘗試更新 lease 的截止時間
+    - name: vip_renewdeadline
+      value: "10"
+
+    # Retry 週期（秒）：follower 嘗試獲取 leader 的間隔
+    - name: vip_retryperiod
+      value: "2"
+
+    # 啟動時作為 leader（第一個 master 節點）
+    # 重要：只有 master-1 應該設定為 true
+    - name: vip_startasleader
+      value: "true"
+
+    # Kubeconfig 路徑：用於訪問 Kubernetes API
+    - name: KUBECONFIG
+      value: "/etc/kubernetes/admin.conf"
+
+    # === 安全配置 ===
+    securityContext:
+      capabilities:
+        add:
+        # NET_ADMIN：管理網路接口，綁定 VIP
+        - NET_ADMIN
+        # NET_RAW：發送 ARP 封包
+        - NET_RAW
+
+    # === Volume 掛載 ===
+    volumeMounts:
+    # 掛載 kubeconfig：用於訪問 Kubernetes API 進行 leader election
+    - name: kubeconfig
+      mountPath: /etc/kubernetes/admin.conf
+      readOnly: true
+
+  # === Volume 定義 ===
+  volumes:
+  - name: kubeconfig
+    hostPath:
+      # 重要：此文件在 kubeadm init 完成後才會存在
+      path: /etc/kubernetes/admin.conf
+      # FileOrCreate：如果文件不存在會等待其創建
+      type: FileOrCreate
+
+# ============================================
+# 部署後驗證
+# ============================================
+# 1. 檢查 Pod 狀態：
+#    kubectl get pods -n kube-system | grep kube-vip
+#
+# 2. 檢查 VIP 是否綁定：
+#    ip addr show eth0 | grep {{ cluster_vip }}
+#
+# 3. 檢查日誌：
+#    kubectl logs -n kube-system kube-vip-<pod-name>
+#
+# 4. 測試 VIP 連接：
+#    curl -k https://{{ cluster_vip }}:6443/healthz
+# ============================================
