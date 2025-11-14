@@ -9,8 +9,9 @@ helmCharts:
     namespace: kube-system # (TopoLVM 通常在 kube-system 命名空間)
     valuesFile: values.yaml
 
-resources:
-  - topolvm-storage-classes.yaml
+# Comment out custom StorageClass to avoid conflict with Helm chart
+# resources:
+#   - topolvm-storage-classes.yaml
 
 patchesStrategicMerge:
   - controller-tolerations.yaml
