@@ -8,6 +8,9 @@ resources:
   # 自我管理 ApplicationSet - 管理 detectviz-gitops 應用
   - appset.yaml
 
+  # 應用層 ApplicationSets - 管理 observability 和 identity 應用
+  - apps-appset.yaml
+
   # 業務應用 ApplicationSets - 指向 detectviz-apps repo
   # 暫時註釋掉，因為 detectviz-apps 倉庫還沒有準備好
   # - observability-appset.yaml

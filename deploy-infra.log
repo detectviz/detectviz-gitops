@@ -5887,3 +5887,91 @@ Failed last sync attempt to [2362085def37b8d6dbe61b94f3b70d10b44b020d]: one or m
 ⏺ Bash(kubectl get ingress -n argocd argocd-server)
   ⎿  NAME            CLASS   HOSTS                       ADDRESS        PORTS     AGE
      argocd-server   nginx   argocd.detectviz.internal   192.168.0.10   80, 443   6h19m
+
+⏺ 太棒了! HTTPS 連接成功!
+
+  - HTTP/2 307 - ArgoCD 正常返回重定向
+  - Ingress 狀態正常,ADDRESS 為 192.168.0.10
+  - HTTPS 443 端口可以訪問
+
+  現在讓我創建一個完整的問題修復總結文件:
+
+⏺ Write(~/Documents/github/detectviz-gitops/ingress-nginx-loadbalancer-fix.md)
+  ⎿  Wrote 313 lines to ../../../../../ingress-nginx-loadbalancer-fix.md
+     # Ingress-Nginx LoadBalancer 配置修復總結
+     **日期**: 2025-11-14 23:52
+     **狀態**: ✅ 完全修復
+     ---
+     ## 🎯 問題描述
+     ### 症狀
+     … +303 lines (ctrl+o to expand)
+
+⏺ 太好了!現在讓我更新 deploy.md 文檔,添加這個問題的說明:
+
+⏺ Task(Update deploy.md with ingress problem)
+  ⎿  Done (12 tool uses · 62.0k tokens · 2m 14s)
+
+⏺ 完美!讓我 commit 這些變更並檢查最終狀態:
+
+⏺ Bash(git add -A && git commit -m "docs: Add Ingress-Nginx LoadBalancer troubleshooting to deploy.md…)
+  ⎿  [main 729e29b] docs: Add Ingress-Nginx LoadBalancer troubleshooting to deploy.md
+      3 files changed, 619 insertions(+), 1 deletion(-)
+      create mode 100644 ingress-nginx-loadbalancer-fix.md
+     … +2 lines (ctrl+o to expand)
+
+⏺ Bash(echo "=== 最終狀態檢查 ===" && echo "" && echo "1. 服務狀態:" && kubectl get svc ingress-nginx-controller -n ingress-nginx && echo "" && echo "2. Ingress
+      狀態:" && kubectl…)
+  ⎿  === 最終狀態檢查 ===
+
+     1. 服務狀態:
+     … +10 lines (ctrl+o to expand)
+
+⏺ 🎉 完美!所有問題已完全解決!
+
+  最終狀態總結
+
+  ✅ Ingress-Nginx LoadBalancer
+
+  - EXTERNAL-IP: 192.168.0.10 ✅
+  - Service 狀態: LoadBalancer 正常運行 ✅
+  - Ports: 80 (HTTP) 和 443 (HTTPS) 正常暴露 ✅
+
+  ✅ ArgoCD Ingress
+
+  - ADDRESS: 192.168.0.10 ✅
+  - HOSTS: argocd.detectviz.internal ✅
+  - PORTS: 80, 443 ✅
+
+  ✅ ArgoCD Application
+
+  - Sync Status: Synced ✅
+  - Health Status: Healthy ✅
+
+  ✅ HTTPS 訪問
+
+  https://argocd.detectviz.internal 可正常訪問
+  HTTP/2 307 重定向正常
+
+  ---
+  📝 已創建的文檔
+
+  1. ingress-nginx-loadbalancer-fix.md - 完整的問題修復過程文檔
+    - 問題描述和症狀
+    - 根本原因分析（4個問題）
+    - 解決方案實施
+    - 驗證結果
+    - 技術洞察和最佳實踐
+  2. deploy.md - 已更新
+    - 問題 #7: 已解決問題快速參考
+    - 問題 #11: 詳細故障排除指南
+
+  ---
+  🔧 關鍵修復
+
+  1. ✅ MetalLB IP 池: 添加 192.168.0.10/32
+  2. ✅ Service 配置: 移除 deprecated loadBalancerIP
+  3. ✅ Traffic Policy: 改用 externalTrafficPolicy: Cluster
+  4. ✅ Kustomize Patch: 正確配置 strategic merge patch
+
+  ---
+  現在您可以正常訪問 https://argocd.detectviz.internal 了!🚀
