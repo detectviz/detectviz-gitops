@@ -3,9 +3,6 @@ kind: Kustomization
 
 namespace: ingress-nginx
 
-buildOptions:
-  - --enable-helm
-
 bases:
   - ../base
 
