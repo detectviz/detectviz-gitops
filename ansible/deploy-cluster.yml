@@ -3,28 +3,15 @@
 # Detectviz Platform - Ansible 主部署劇本 (Main Playbook)
 #
 # 執行順序：
-# 1.  **前置準備 (Pre-flight)**: 確保 `yq` 工具已安裝。
-# 2.  **節點初始化 (Common)**: 在所有節點上執行系統更新、安裝必要套件。
-# 3.  **網路配置 (Network)**: 設定雙網路介面、MTU 及 hosts。
-# 4.  **Master 節點部署 (Master)**: 初始化 Kubernetes 控制平面、安裝 CNI。
-# 5.  **Worker 節點部署 (Worker)**: 將工作節點加入集群。
-# 6.  **節點標籤 (Node Labels)**: 為特定節點添加標籤，用於工作負載調度。
-# 7.  **ArgoCD 部署 (ArgoCD)**: 安裝並設定 ArgoCD GitOps 引擎。
-# 8.  **最終驗證 (Validation)**: 檢查集群狀態並顯示部署摘要。
+# 1.  **節點初始化 (Common)**: 在所有節點上執行系統更新、安裝 containerd、Kubernetes 組件和必要套件。
+# 2.  **網路配置 (Network)**: 設定雙網路介面、MTU 及 hosts。
+# 3.  **Master 節點部署 (Master)**: 初始化 Kubernetes 控制平面、安裝 CNI。
+# 4.  **Worker 節點部署 (Worker)**: 將工作節點加入集群。
+# 5.  **節點標籤 (Node Labels)**: 為特定節點添加標籤，用於工作負載調度。
+# 6.  **ArgoCD 部署 (ArgoCD)**: 安裝並設定 ArgoCD GitOps 引擎。
+# 7.  **最終驗證 (Validation)**: 檢查集群狀態並顯示部署摘要。
 #
 # ==============================================================================
-
-- name: "[Pre-flight] Ensure yq is installed on the control machine"
-  hosts: localhost
-  connection: local
-  become: true
-  gather_facts: false
-  tasks:
-    - name: "Install yq"
-      ansible.builtin.apt:
-        name: yq
-        state: present
-        update_cache: yes
 
 - name: "[Phase 1] Prepare all nodes for Kubernetes installation (節點初始化)"
   hosts: k8s_cluster
@@ -48,6 +35,31 @@
   roles:
     - role: master
 
+- name: "[Phase 3.5] Generate worker join command (生成 Worker 加入命令)"
+  hosts: masters[0]
+  become: true
+  gather_facts: false
+  tasks:
+    # 在 master-1 上生成 worker 節點的加入命令
+    # 此命令包含: join token, CA cert hash, 和控制平面的 endpoint
+    - name: "Generate kubeadm join command for workers (生成 worker 加入命令)"
+      ansible.builtin.command: kubeadm token create --print-join-command
+      register: worker_join_command_output
+      changed_when: false
+
+    # 將生成的 join 命令保存為 fact,供後續使用
+    - name: "Set worker join command as fact (設定 worker 加入命令為 fact)"
+      ansible.builtin.set_fact:
+        worker_join_command: "{{ worker_join_command_output.stdout }}"
+
+    # 使用 add_host 將 join 命令動態添加到所有 worker 節點的變數中
+    # 這樣在 Phase 4 執行時,每個 worker 都能訪問到這個命令
+    - name: "Share worker join command to all workers (將 worker 加入命令共享給所有 worker 節點)"
+      ansible.builtin.add_host:
+        name: "{{ item }}"
+        worker_join_command: "{{ worker_join_command }}"
+      loop: "{{ groups['workers'] }}"
+
 - name: "[Phase 4] Join worker nodes to the cluster (Worker 節點部署)"
   hosts: workers
   become: true
@@ -60,16 +72,32 @@
   become: false
   gather_facts: false
   tasks:
+    # 為每個節點添加特定的工作負載標籤
+    # 這些標籤用於 Pod 的 nodeSelector,確保特定工作負載部署到指定節點
+    # 注意: 使用 --kubeconfig 參數明確指定配置檔案路徑
     - name: "Label nodes for specific workloads (為節點添加標籤)"
       ansible.builtin.command: >
-        kubectl label node {{ item.name }} {{ item.label }} --overwrite
+        kubectl --kubeconfig=/etc/kubernetes/admin.conf label node {{ item.name }} {{ item.label }} --overwrite
       loop:
-        - { name: "master-1", label: "node-role.kubernetes.io/workload-monitoring=true" }
-        - { name: "master-2", label: "node-role.kubernetes.io/workload-mimir=true" }
-        - { name: "master-3", label: "node-role.kubernetes.io/workload-loki=true" }
-        - { name: "app-worker", label: "node-role.kubernetes.io/workload-apps=true" }
+        - {
+            name: "master-1",
+            label: "node-role.kubernetes.io/workload-monitoring=true",  # Grafana, Prometheus
+          }
+        - {
+            name: "master-2",
+            label: "node-role.kubernetes.io/workload-mimir=true",       # Mimir (metrics)
+          }
+        - {
+            name: "master-3",
+            label: "node-role.kubernetes.io/workload-loki=true",        # Loki (logs)
+          }
+        - {
+            name: "app-worker",
+            label: "node-role.kubernetes.io/workload-apps=true",        # ArgoCD, 應用程式
+          }
       changed_when: true
       ignore_errors: true
+      become: true  # 需要 root 權限訪問 /etc/kubernetes/admin.conf
 
 - name: "[Phase 6] Install ArgoCD and Bootstrap GitOps (ArgoCD 部署)"
   hosts: masters[0]
@@ -79,57 +107,257 @@
     argocd_install_manifest: "https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml"
     argocd_node_selector:
       node-role.kubernetes.io/workload-apps: "true"
+  # 設定 KUBECONFIG 環境變數,讓 kubernetes.core.k8s 模組可以連接到集群
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
   tasks:
+    # 建立 ArgoCD 專用的命名空間
+    # 注意: kubernetes.core.k8s 模組需要 Python kubernetes 客戶端 (已在 common role 安裝)
     - name: "Ensure ArgoCD namespace exists (確保 ArgoCD 命名空間存在)"
       kubernetes.core.k8s:
         name: argocd
         api_version: v1
         kind: Namespace
         state: present
+      become: true  # 需要 root 權限訪問 kubeconfig
 
+    # 下載 ArgoCD 官方安裝清單到本地
     - name: "Download ArgoCD install manifest (下載 ArgoCD 安裝清單)"
       ansible.builtin.get_url:
         url: "{{ argocd_install_manifest }}"
         dest: "/tmp/argocd-install.yaml"
         mode: "0644"
 
-    - name: "Add nodeSelector to ArgoCD components (為 ArgoCD 組件添加 nodeSelector)"
-      ansible.builtin.shell: |
-        yq eval 'select(.kind == "{{ item.kind }}" and .metadata.name == "{{ item.name }}").spec.template.spec.nodeSelector = {{ argocd_node_selector | to_json }}' -i "/tmp/argocd-install.yaml"
-      args:
-        executable: /bin/bash
-      loop:
-        - { kind: "Deployment", name: "argocd-repo-server" }
-        - { kind: "Deployment", name: "argocd-applicationset-controller" }
-        - { kind: "Deployment", name: "argocd-dex-server" }
-        - { kind: "Deployment", name: "argocd-server" }
-        - { kind: "StatefulSet", name: "argocd-application-controller" }
-
+    # 應用 ArgoCD manifest 到集群 (不修改 nodeSelector)
+    # 不等待就緒,因為某些組件 (如 dex-server) 可能需要較長時間啟動
     - name: "Apply ArgoCD install manifest (應用 ArgoCD 安裝清單)"
       kubernetes.core.k8s:
         state: present
         src: "/tmp/argocd-install.yaml"
         namespace: argocd
-        wait: yes
-        timeout: 300
+        wait: no
+      become: true
 
+    # 為所有 ArgoCD 組件添加 nodeSelector,確保只部署到 app-worker 節點
+    # 使用 kubectl patch 而非 yq 修改文件,更可靠且不會破壞 YAML 結構
+    - name: "Patch ArgoCD deployments with nodeSelector (為 ArgoCD Deployments 添加 nodeSelector)"
+      ansible.builtin.command: >
+        kubectl --kubeconfig=/etc/kubernetes/admin.conf -n argocd patch deployment {{ item }}
+        -p='{"spec":{"template":{"spec":{"nodeSelector":{"node-role.kubernetes.io/workload-apps":"true"}}}}}'
+      loop:
+        - argocd-applicationset-controller
+        - argocd-dex-server
+        - argocd-notifications-controller
+        - argocd-redis
+        - argocd-repo-server
+        - argocd-server
+      become: true
+      changed_when: true
+      ignore_errors: true  # 允許deployment不存在的錯誤
+
+    # 為 StatefulSet 添加 nodeSelector
+    - name: "Patch ArgoCD statefulset with nodeSelector (為 ArgoCD StatefulSet 添加 nodeSelector)"
+      ansible.builtin.command: >
+        kubectl --kubeconfig=/etc/kubernetes/admin.conf -n argocd patch statefulset argocd-application-controller
+        -p='{"spec":{"template":{"spec":{"nodeSelector":{"node-role.kubernetes.io/workload-apps":"true"}}}}}'
+      become: true
+      changed_when: true
+      ignore_errors: true
+
+    # ArgoCD v3.2.0+ 需要 server.secretkey 才能啟動 dex-server
+    # 生成隨機的 32 字節 base64 編碼 secret key
+    - name: "Generate ArgoCD server secret key (生成 ArgoCD server secret key)"
+      ansible.builtin.shell: openssl rand -base64 32
+      register: argocd_secret_key
+      changed_when: false
+
+    # 將 secret key 添加到 argocd-secret
+    - name: "Patch ArgoCD secret with server.secretkey (添加 server.secretkey 到 ArgoCD secret)"
+      ansible.builtin.command: >
+        kubectl --kubeconfig=/etc/kubernetes/admin.conf -n argocd patch secret argocd-secret
+        -p='{"stringData": {"server.secretkey": "{{ argocd_secret_key.stdout }}"}}'
+      become: true
+      changed_when: true
+
+    # 等待 ArgoCD Server Pod 就緒 (這是最關鍵的組件)
+    - name: "Wait for ArgoCD Server to be ready (等待 ArgoCD Server 就緒)"
+      ansible.builtin.command: >
+        kubectl --kubeconfig=/etc/kubernetes/admin.conf wait --for=condition=Ready
+        pod -l app.kubernetes.io/name=argocd-server -n argocd --timeout=600s
+      become: true
+      changed_when: false
+      ignore_errors: true  # 如果超時,繼續執行,讓使用者可以手動檢查
+
+    # 配置 Git Repository SSH 認證
+    # Root Application 使用 SSH URL 訪問 GitHub,需要配置 deploy key
+    # 檢查 SSH 私鑰是否存在
+    - name: "Check if SSH private key exists (檢查 SSH 私鑰是否存在)"
+      ansible.builtin.stat:
+        path: "{{ lookup('env', 'HOME') }}/.ssh/id_ed25519_detectviz"
+      register: ssh_key_stat
+      delegate_to: localhost
+      become: false
+
+    # 如果 SSH 金鑰存在,配置 ArgoCD repository 認證
+    - name: "Configure ArgoCD Git Repository authentication (配置 ArgoCD Git Repository 認證)"
+      when: ssh_key_stat.stat.exists
+      block:
+        # 複製 SSH 私鑰到臨時位置
+        - name: "Copy SSH private key to remote host (複製 SSH 私鑰到遠端主機)"
+          ansible.builtin.copy:
+            src: "{{ lookup('env', 'HOME') }}/.ssh/id_ed25519_detectviz"
+            dest: "/tmp/argocd-ssh-key"
+            mode: "0600"
+
+        # 建立 ArgoCD repository secret
+        - name: "Create ArgoCD repository secret (建立 ArgoCD repository secret)"
+          ansible.builtin.command: >
+            kubectl --kubeconfig=/etc/kubernetes/admin.conf create secret generic detectviz-gitops-repo
+            --from-file=sshPrivateKey=/tmp/argocd-ssh-key
+            -n argocd
+            --dry-run=client -o yaml
+          register: repo_secret_yaml
+          changed_when: false
+
+        - name: "Apply ArgoCD repository secret (應用 ArgoCD repository secret)"
+          kubernetes.core.k8s:
+            state: present
+            definition: "{{ repo_secret_yaml.stdout | from_yaml }}"
+            namespace: argocd
+          become: true
+
+        # 添加標籤讓 ArgoCD 識別為 repository credential
+        - name: "Label repository secret (為 repository secret 添加標籤)"
+          ansible.builtin.command: >
+            kubectl --kubeconfig=/etc/kubernetes/admin.conf label secret detectviz-gitops-repo
+            argocd.argoproj.io/secret-type=repository
+            -n argocd --overwrite
+          become: true
+          changed_when: true
+
+        # 配置 repository URL 和類型
+        - name: "Configure repository URL (配置 repository URL)"
+          ansible.builtin.command: >
+            kubectl --kubeconfig=/etc/kubernetes/admin.conf patch secret detectviz-gitops-repo
+            -n argocd
+            -p='{"stringData":{"type":"git","url":"git@github.com:detectviz/detectviz-gitops.git"}}'
+          become: true
+          changed_when: true
+
+        # 獲取 GitHub SSH known_hosts
+        - name: "Get GitHub SSH known_hosts (獲取 GitHub SSH known_hosts)"
+          ansible.builtin.command: ssh-keyscan github.com
+          register: github_known_hosts
+          changed_when: false
+          delegate_to: localhost
+          become: false
+
+        # 建立 known_hosts secret
+        - name: "Create SSH known_hosts secret (建立 SSH known_hosts secret)"
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              apiVersion: v1
+              kind: Secret
+              metadata:
+                name: argocd-ssh-known-hosts
+                namespace: argocd
+              type: Opaque
+              stringData:
+                ssh_known_hosts: "{{ github_known_hosts.stdout }}"
+          become: true
+
+        # 重啟 ArgoCD repo-server 以載入新的認證
+        - name: "Restart ArgoCD repo-server (重啟 ArgoCD repo-server)"
+          ansible.builtin.command: >
+            kubectl --kubeconfig=/etc/kubernetes/admin.conf rollout restart deployment argocd-repo-server -n argocd
+          become: true
+          changed_when: true
+
+        # 等待 repo-server 重啟完成
+        - name: "Wait for repo-server restart (等待 repo-server 重啟完成)"
+          ansible.builtin.command: >
+            kubectl --kubeconfig=/etc/kubernetes/admin.conf rollout status deployment argocd-repo-server
+            -n argocd --timeout=60s
+          become: true
+          changed_when: false
+
+        # 清理臨時 SSH 金鑰
+        - name: "Clean up temporary SSH key (清理臨時 SSH 金鑰)"
+          ansible.builtin.file:
+            path: "/tmp/argocd-ssh-key"
+            state: absent
+
+    # 如果 SSH 金鑰不存在,顯示警告訊息
+    - name: "Display warning if SSH key not found (顯示 SSH 金鑰未找到的警告)"
+      ansible.builtin.debug:
+        msg: |
+          ⚠️  WARNING: SSH 私鑰未找到!
+
+          路徑: {{ lookup('env', 'HOME') }}/.ssh/id_ed25519_detectviz
+
+          Root Application 將無法同步 GitHub repository。
+          請執行以下步驟配置 SSH 認證:
+
+          1. 生成 SSH 金鑰:
+             ssh-keygen -t ed25519 -C "argocd-deploy-key" -f ~/.ssh/id_ed25519_detectviz -N ""
+
+          2. 將公鑰添加到 GitHub repository 的 Deploy Keys:
+             https://github.com/detectviz/detectviz-gitops/settings/keys
+
+          3. 重新執行部署或手動配置認證:
+             參考文件: ansible/ARGOCD_GIT_REPOSITORY_SETUP.md
+      when: not ssh_key_stat.stat.exists
+
+    # 部署 ArgoCD Root Application (App of Apps 模式)
+    # 這個應用會自動管理其他所有基礎設施應用 (Grafana, Loki, Mimir, etc.)
+    # 先將 root application manifest 複製到遠端主機
+    - name: "Copy ArgoCD Root Application manifest to remote host (複製 ArgoCD 根應用程式 manifest 到遠端主機)"
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../argocd/root-argocd-app.yaml"
+        dest: "/tmp/root-argocd-app.yaml"
+        mode: "0644"
+
+    # 應用 Root Application manifest
     - name: "Bootstrap ArgoCD Root Application (啟動 ArgoCD 根應用程式)"
       kubernetes.core.k8s:
         state: present
-        src: "{{ playbook_dir }}/../argocd/root-argocd-app.yaml"
+        src: "/tmp/root-argocd-app.yaml"
         namespace: argocd
+      become: true
+
+    # 如果 SSH 金鑰已配置,強制刷新 root application
+    - name: "Force refresh root application (強制刷新 root application)"
+      ansible.builtin.command: >
+        kubectl --kubeconfig=/etc/kubernetes/admin.conf patch application root
+        -n argocd
+        -p='{"metadata":{"annotations":{"argocd.argoproj.io/refresh":"hard"}}}'
+        --type=merge
+      become: true
+      changed_when: true
+      when: ssh_key_stat.stat.exists
+
+    # 等待 root application 同步
+    - name: "Wait for root application to sync (等待 root application 同步)"
+      ansible.builtin.pause:
+        seconds: 10
+      when: ssh_key_stat.stat.exists
 
 - name: "[Phase 7] Validate Kubernetes Cluster Deployment (最終驗證)"
   hosts: masters[0]
-  become: false
+  become: true
   gather_facts: false
   tasks:
+    # 等待所有節點進入 Ready 狀態 (最多等待 5 分鐘)
+    # 這確保 CNI 網路插件已初始化完成
+    # 注意: 使用 --kubeconfig 參數明確指定配置檔案
     - name: "Wait for all nodes to be in Ready state (等待所有節點進入 Ready 狀態)"
-      ansible.builtin.command: kubectl wait --for=condition=Ready node --all --timeout=5m
+      ansible.builtin.command: kubectl --kubeconfig=/etc/kubernetes/admin.conf wait --for=condition=Ready node --all --timeout=5m
       changed_when: false
 
+    # 獲取最終的集群節點狀態,包含詳細資訊
     - name: "Get final cluster node status (獲取最終集群節點狀態)"
-      ansible.builtin.command: kubectl get nodes -o wide
+      ansible.builtin.command: kubectl --kubeconfig=/etc/kubernetes/admin.conf get nodes -o wide
       register: cluster_status
       changed_when: false
 

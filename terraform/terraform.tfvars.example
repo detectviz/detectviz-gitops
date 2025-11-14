@@ -27,7 +27,7 @@ proxmox_storage = "nvme-vm"
 # 網路橋接器配置（階段一：單網卡運作）
 # 檢查現有橋接器：pvesh get /nodes/<NODE>/network --output-format json | jq -r '.[] | select(.type=="bridge") | .iface'
 proxmox_bridge     = "vmbr0"  # 主網路橋接器 (管理網路) - 必須存在
-proxmox_mtu        = 9000     # 橋接器 MTU (支援巨型幀)
+proxmox_mtu        = 1500     # 橋接器 MTU (標準值，如需巨型幀且硬體支援可改為 9000)
 k8s_overlay_bridge = "vmbr0"  # Kubernetes Overlay 網路橋接器 (階段一：同主網路)
 
 # ============================================
@@ -79,11 +79,15 @@ worker_cores = [
 worker_memory = 24576 # 24 GB
 
 worker_system_disk_sizes = [
-  "320G", # vm-4 應用磁碟 (合併系統與應用儲存)
+  "100G", # vm-4 系統磁碟 (root filesystem)
 ]
 
 worker_data_disks = [
-  # 應用磁碟已包含在系統磁碟中，無需額外資料磁碟
+  {
+    size    = "250G"    # 磁碟大小
+    storage = "nvme-vm" # Proxmox storage pool (與 proxmox_storage 一致)
+  }
+  # vm-4 資料磁碟，供 TopoLVM 建立 data-vg (動態 PV 管理)
 ]
 
 worker_ips = [

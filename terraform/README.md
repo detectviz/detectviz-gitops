@@ -18,6 +18,8 @@ Terraform 配置，用於在 Proxmox 上自動化創建 Detectviz 平台所需�
 ### 創建資源
 - 3 個 Master 節點（控制平面）
 - 1 個 Worker 節點（應用運行）
+  - 雙磁碟架構：系統磁碟 (100G) + 資料磁碟 (250G)
+  - 資料磁碟供 TopoLVM 動態 PV 管理
 - Ubuntu 22.04 LTS 作業系統
 - 自訂網路配置（192.168.0.0/24）
 - NVMe/SSD 混合儲存架構
@@ -114,6 +116,44 @@ Terraform 變數配置文件：
 | `proxmox_api_token_id` | API Token ID | `terraform@pam!terraform` |
 | `proxmox_api_token_secret` | API Token Secret | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
 | `ssh_public_key` | SSH 公鑰內容 | `ssh-rsa AAAAB3...` |
+
+### Worker 節點磁碟配置
+
+Worker 節點採用**雙磁碟架構**以支援 TopoLVM 動態儲存：
+
+```hcl
+# 系統磁碟（OS + 系統服務）
+worker_system_disk_sizes = ["100G"]
+
+# 資料磁碟（TopoLVM 管理，動態 PV）
+worker_data_disks = [
+  {
+    size    = "250G"    # 磁碟大小
+    storage = "nvme-vm" # Proxmox storage pool
+  }
+]
+```
+
+**磁碟用途**：
+
+| 磁碟 | 裝置 | 大小 | 用途 | 管理方式 |
+|------|------|------|------|----------|
+| 系統磁碟 | `/dev/sda` | 100G | OS, kubelet, containerd | 系統自動管理 |
+| 資料磁碟 | `/dev/sdb` | 250G | PostgreSQL, Tempo, Vault 等應用資料 | TopoLVM (LVM VG: `data-vg`) |
+
+**優勢**：
+- ✅ **I/O 隔離**: 系統與應用磁碟分離，避免效能競爭
+- ✅ **動態分配**: TopoLVM 自動管理 PV，無需預先劃分分區
+- ✅ **易擴充**: 可輕鬆添加磁碟到 `data-vg`
+
+**後續步驟**：
+部署 VM 後，需在 app-worker 上初始化 LVM Volume Group：
+
+```bash
+ssh ubuntu@192.168.0.14 'sudo pvcreate /dev/sdb && sudo vgcreate data-vg /dev/sdb'
+```
+
+詳細設定請參考：[docs/storage/topolvm-setup.md](/docs/storage/topolvm-setup.md)
 
 ## 進階操作
 

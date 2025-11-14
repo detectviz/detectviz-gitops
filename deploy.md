@@ -56,7 +56,7 @@ iface vmbr0 inet static
     bridge-ports enp4s0
     bridge-stp off
     bridge-fd 0
-    mtu 9000
+    mtu 1500
 
 # 內部集群網路橋接器 (vmbr1 - enp5s0)
 auto vmbr1
@@ -65,8 +65,13 @@ iface vmbr1 inet static
     bridge-ports enp5s0
     bridge-stp off
     bridge-fd 0
-    mtu 9000
+    mtu 1500
 ```
+
+> **MTU 設定說明**:
+> - **預設 1500**: 適用於所有標準網卡和交換機，建議使用
+> - **進階 9000**: 需要網卡、交換機、線材全部支援巨型幀（Jumbo Frames），否則會導致連線失敗
+> - **診斷方法**: 如果設定 9000 後無法連線，請改回 1500
 
 #### 1.2 配置 sysctl 參數
 
@@ -106,8 +111,8 @@ sysctl net.ipv4.conf.all.rp_filter
 ```
 
 **預期結果**：
-- vmbr0: 192.168.0.2/24, MTU 9000
-- vmbr1: 10.0.0.2/24, MTU 9000
+- vmbr0: 192.168.0.2/24, MTU 1500
+- vmbr1: 10.0.0.2/24, MTU 1500
 - ip_forward = 1
 - rp_filter = 2
 
@@ -238,18 +243,38 @@ ssh-keygen -t rsa -b 4096 -C "your_email@example.com"
 ```bash
 cd terraform/
 
-# 檢查關鍵配置
-grep -E "proxmox_bridge|k8s_overlay_bridge|master_internal_ips|worker_internal_ips|cluster_domain" terraform.tfvars
+# 檢查網路配置
+grep -E 'proxmox_bridge|k8s_overlay_bridge|master_internal_ips|worker_internal_ips|cluster_domain' terraform.tfvars
+
+# 檢查磁碟配置
+grep -E 'worker_system_disk_sizes|worker_data_disks' terraform.tfvars
 ```
 
-**預期輸出**：
+**預期輸出 - 網路配置**：
 ```
-proxmox_bridge     = "vmbr0"
-k8s_overlay_bridge = "vmbr1"
+proxmox_bridge     = "vmbr0"          # 外部網路 (管理 + 應用)
+k8s_overlay_bridge = "vmbr1"          # 內部網路 (Kubernetes 節點間通訊)
 master_internal_ips = ["10.0.0.11", "10.0.0.12", "10.0.0.13"]
 worker_internal_ips = ["10.0.0.14"]
 cluster_domain      = "cluster.internal"
 ```
+
+**預期輸出 - 磁碟配置（雙磁碟架構）**：
+```hcl
+worker_system_disk_sizes = ["100G"]    # 系統磁碟 (OS + kubelet)
+worker_data_disks = [
+  {
+    size    = "250G"                   # 資料磁碟 (TopoLVM data-vg)
+    storage = "nvme-vm"
+  }
+]
+```
+
+**說明**：
+- **Master 節點**: 單磁碟 100GB (OS + etcd)
+- **Worker 節點**: 雙磁碟架構
+  - `/dev/sda` 100GB: 系統磁碟
+  - `/dev/sdb` 250GB: 資料磁碟 (供 TopoLVM 管理，動態 PV)
 
 #### 1.2 初始化並部署
 
@@ -268,11 +293,68 @@ pvesh get /nodes/proxmox/qemu --output-format json | jq -r '.[] | select(.vmid >
 # 測試 SSH 連接
 ssh ubuntu@192.168.0.11 'hostname'
 ssh ubuntu@192.168.0.14 'hostname'
+
+# 檢查 app-worker 磁碟配置
+ssh ubuntu@192.168.0.14 'lsblk'
 ```
 
-#### 1.4 檢查生成的文件
+**預期輸出 (app-worker 磁碟)**：
+```
+NAME   MAJ:MIN RM  SIZE RO TYPE MOUNTPOINTS
+sda      8:0    0  100G  0 disk
+├─sda1   8:1    0    1M  0 part
+├─sda2   8:2    0    2G  0 part /boot
+└─sda3   8:3    0   98G  0 part
+  └─ubuntu--vg-ubuntu--lv 253:0 0 98G  0 lvm  /
+sdb      8:16   0  250G  0 disk     ← 資料磁碟 (未格式化)
+```
+
+#### 1.4 TopoLVM Volume Group 配置
+
+**重要**: LVM Volume Group 的建立已經**自動化**在 Ansible 部署流程中 (Phase 4: Worker Role),**無需手動操作**。
+
+Ansible 會在 Phase 4 自動執行:
+1. 檢查 /dev/sdb 磁碟是否存在
+2. 建立 Physical Volume (`pvcreate /dev/sdb`)
+3. 建立 Volume Group (`vgcreate topolvm-vg /dev/sdb`)
+4. 驗證 LVM 配置
+
+配置檔案位置: `ansible/group_vars/all.yml:51-60`
+
+```yaml
+configure_lvm: true  # 啟用 LVM 自動配置
+
+lvm_volume_groups:
+  - name: topolvm-vg   # Volume Group 名稱
+    devices:
+      - /dev/sdb       # 使用的物理設備 (250GB 資料磁碟)
+```
+
+**部署後驗證** (在 Phase 4 完成後):
+```bash
+# SSH 到 app-worker 檢查 LVM 配置
+ssh ubuntu@192.168.0.14 'sudo vgs && sudo pvs'
+```
+
+**預期輸出**：
+```bash
+# vgs
+  VG          #PV #LV #SN Attr   VSize    VFree
+  topolvm-vg    1   0   0 wz--n- <250.00g <250.00g  ← TopoLVM VG (自動建立)
+  ubuntu-vg     1   1   0 wz--n-  <98.00g       0   ← 系統 VG
+```
+
+> **說明**:
+> - Ansible Worker Role 會自動檢查並建立 LVM 配置
+> - 如果 VG 已存在,會自動跳過 (ignore_errors: true)
+> - 可透過設定 `configure_lvm: false` 停用自動 LVM 配置
+
+#### 1.5 檢查生成的文件
 
 ```bash
+# 回到 terraform 目錄
+cd /path/to/detectviz-gitops/terraform
+
 # Ansible inventory
 cat ../ansible/inventory.ini
 
@@ -297,12 +379,12 @@ cd ../scripts/
 
 ```bash
 # 檢查 VM 網路介面
-ssh ubuntu@192.168.0.11 'ip addr show ens18'
-ssh ubuntu@192.168.0.11 'ip addr show ens19'
+ssh ubuntu@192.168.0.11 'ip addr show eth0'
+ssh ubuntu@192.168.0.11 'ip addr show eth1'
 
 # 檢查 MTU 設定
-ssh ubuntu@192.168.0.11 'ip link show ens18 | grep mtu'
-ssh ubuntu@192.168.0.11 'ip link show ens19 | grep mtu'
+ssh ubuntu@192.168.0.11 'ip link show eth0 | grep mtu'
+ssh ubuntu@192.168.0.11 'ip link show eth1 | grep mtu'
 
 # 測試內部網路連通性
 ssh ubuntu@192.168.0.11 'ping -c 3 10.0.0.14'
@@ -313,8 +395,8 @@ ssh ubuntu@192.168.0.11 'getent hosts master-1.cluster.internal'
 ```
 
 **預期結果**：
-- ✅ 每個 VM 有兩個網路介面 (ens18, ens19)
-- ✅ MTU 都設定為 9000
+- ✅ 每個 VM 有兩個網路介面 (eth0, eth1)
+- ✅ MTU 都設定為 1500 (或您自訂的值)
 - ✅ 內部網路可互通
 - ✅ DNS 正確解析兩個域名
 
@@ -340,15 +422,57 @@ ansible all -i inventory.ini -m ping
 ansible-playbook -i inventory.ini deploy-cluster.yml
 ```
 
-**部署內容**：
-1. **Common Role**: 系統初始化、套件安裝
-2. **Network Role**:
-   - 配置雙網路介面 (ens18 + ens19)
-   - 設定 /etc/hosts (detectviz.internal + cluster.internal)
-   - 配置 sysctl 參數 (rp_filter=2, ip_forward=1)
-3. **Master Role**: 初始化 Kubernetes 控制平面
-4. **Worker Role**: 加入工作節點
-5. **ArgoCD**: 安裝 GitOps 引擎
+**部署階段**：
+1. **[Phase 1] Common Role**: 系統初始化、套件安裝、Kubernetes 內核參數配置
+   - 安裝基礎套件: `apt-transport-https`, `ca-certificates`, `curl`, `gnupg`, `python3-pip`
+   - **安裝 Python Kubernetes 客戶端**: `kubernetes`, `pyyaml`, `jsonpatch` (供 ansible kubernetes.core 模組使用)
+   - 安裝 containerd (2.1.5) 和 Kubernetes 組件 (1.32.0)
+   - 安裝 yq (YAML 處理器) 供後續 manifest 修改使用
+   - 配置 Kubernetes 必要內核參數：
+     - `net.ipv4.ip_forward=1` - 啟用 IP 轉發（Pod 網路路由）
+     - `net.bridge.bridge-nf-call-iptables=1` - 橋接流量經 iptables 處理
+     - `net.bridge.bridge-nf-call-ip6tables=1` - IPv6 橋接流量處理
+     - 載入 `br_netfilter` 內核模組並持久化
+
+2. **[Phase 2] Network Role**:
+   - 配置雙網路介面 (eth0: 192.168.0.0/24 + eth1: 10.0.0.0/24)
+   - 設定 /etc/hosts (detectviz.internal + cluster.internal 雙域名)
+   - 配置網路 sysctl 參數 (rp_filter=2 支援非對稱路由)
+
+3. **[Phase 3] Master Role**: 初始化 Kubernetes 控制平面
+   - 初始化第一個 master 節點 (kubeadm init)
+   - 部署 Kube-VIP (控制平面 HA 的虛擬 IP)
+   - 安裝 Calico CNI 網路插件
+   - 其他 master 節點加入控制平面 (kubeadm join --control-plane)
+   - **設定 kubeconfig**: 為 root 和 ansible_user (ubuntu) 建立 ~/.kube/config
+
+4. **[Phase 3.5] 生成 Worker 加入命令**:
+   - 在 master-1 上生成 kubeadm join token
+   - 將 join 命令動態傳遞給所有 worker 節點
+
+5. **[Phase 4] Worker Role**: 加入工作節點
+   - 配置 LVM Volume Groups (data-vg) 供 TopoLVM 使用
+   - 使用 Phase 3.5 生成的 join 命令加入集群
+   - 等待 kubelet 健康檢查通過
+
+6. **[Phase 5] 節點標籤**: 為節點添加工作負載標籤
+   - master-1: `workload-monitoring=true` (Grafana, Prometheus)
+   - master-2: `workload-mimir=true` (Mimir 長期指標儲存)
+   - master-3: `workload-loki=true` (Loki 日誌聚合)
+   - app-worker: `workload-apps=true` (ArgoCD, 應用程式)
+   - **注意**: 使用 `--kubeconfig=/etc/kubernetes/admin.conf` 明確指定配置檔案
+
+7. **[Phase 6] ArgoCD 部署**: 安裝 GitOps 引擎
+   - **設定環境變數**: `KUBECONFIG=/etc/kubernetes/admin.conf` (供 kubernetes.core.k8s 模組使用)
+   - 建立 argocd namespace
+   - 下載 ArgoCD 官方 manifest
+   - 使用 yq 為 ArgoCD 組件添加 nodeSelector (確保部署到 app-worker)
+   - 應用 ArgoCD manifest
+   - 部署 Root Application (App of Apps 模式)
+
+8. **[Phase 7] 最終驗證**: 集群健康檢查
+   - 等待所有節點進入 Ready 狀態
+   - 顯示集群節點資訊和部署摘要
 
 #### 3.3 部署後驗證
 
@@ -411,7 +535,51 @@ kubectl port-forward svc/argocd-server -n argocd 8080:443
 - **Username**: `admin`
 - **Password**: (上一步驟獲取的密碼)
 
-#### 4.4 驗證 ApplicationSet 同步
+#### 4.4 配置 Git Repository SSH 認證
+
+由於 Root Application 使用 SSH URL 訪問 GitHub 私有 repository,需要配置 SSH 金鑰:
+
+```bash
+# 1. 複製 SSH 私鑰到 master-1
+scp ~/.ssh/id_ed25519_detectviz ubuntu@192.168.0.11:/tmp/argocd-ssh-key
+
+# 2. 建立 ArgoCD repository secret
+ssh ubuntu@192.168.0.11 "sudo kubectl --kubeconfig=/etc/kubernetes/admin.conf create secret generic detectviz-gitops-repo --from-file=sshPrivateKey=/tmp/argocd-ssh-key -n argocd"
+
+# 3. 添加標籤讓 ArgoCD 識別為 repository credential
+ssh ubuntu@192.168.0.11 "sudo kubectl --kubeconfig=/etc/kubernetes/admin.conf label secret detectviz-gitops-repo argocd.argoproj.io/secret-type=repository -n argocd --overwrite"
+
+# 4. 配置 repository URL
+ssh ubuntu@192.168.0.11 "sudo kubectl --kubeconfig=/etc/kubernetes/admin.conf patch secret detectviz-gitops-repo -n argocd -p='{\"stringData\":{\"type\":\"git\",\"url\":\"git@github.com:detectviz/detectviz-gitops.git\"}}'"
+
+# 5. 添加 GitHub SSH known_hosts
+ssh-keyscan github.com > /tmp/github-hostkey
+scp /tmp/github-hostkey ubuntu@192.168.0.11:/tmp/
+ssh ubuntu@192.168.0.11 "sudo kubectl --kubeconfig=/etc/kubernetes/admin.conf create secret generic argocd-ssh-known-hosts --from-file=ssh_known_hosts=/tmp/github-hostkey -n argocd"
+
+# 6. 重啟 ArgoCD repo-server 載入新的認證
+ssh ubuntu@192.168.0.11 "sudo kubectl --kubeconfig=/etc/kubernetes/admin.conf rollout restart deployment argocd-repo-server -n argocd"
+ssh ubuntu@192.168.0.11 "sudo kubectl --kubeconfig=/etc/kubernetes/admin.conf rollout status deployment argocd-repo-server -n argocd --timeout=60s"
+
+# 7. 強制刷新 root application
+ssh ubuntu@192.168.0.11 "sudo kubectl --kubeconfig=/etc/kubernetes/admin.conf patch application root -n argocd -p='{\"metadata\":{\"annotations\":{\"argocd.argoproj.io/refresh\":\"hard\"}}}' --type=merge"
+
+# 8. 清理臨時檔案
+ssh ubuntu@192.168.0.11 "rm -f /tmp/argocd-ssh-key /tmp/github-hostkey"
+```
+
+**等待約 10-30 秒後,驗證 Root Application 狀態**:
+```bash
+# 檢查 root application
+kubectl get application root -n argocd
+# 預期輸出: SYNC STATUS = Synced
+
+# 檢查 ApplicationSets
+kubectl get applicationset -n argocd
+# 預期看到: argocd-bootstrap, detectviz-gitops
+```
+
+#### 4.5 驗證 ApplicationSet 同步
 
 ```bash
 # 檢查 ApplicationSet
@@ -723,20 +891,56 @@ argocd app create <app-name> ...
 
 #### 6. MTU 問題
 
-**問題**: 封包丟失或連線不穩定
+**問題**: 設定 MTU 9000 後無法連線或封包丟失
+
+**原因**: 網卡、交換機或線材不支援巨型幀（Jumbo Frames）
+
+**診斷步驟**:
+
+```bash
+# 1. 測試標準 MTU (1472 bytes payload + 28 bytes header = 1500 bytes)
+ping -c 3 -M do -s 1472 192.168.0.11
+# 預期: 成功
+
+# 2. 測試巨型幀 MTU (8972 bytes payload + 28 bytes header = 9000 bytes)
+ping -c 3 -M do -s 8972 192.168.0.11
+# 如果失敗，表示路徑中有設備不支援 MTU 9000
+
+# 3. 檢查 Proxmox 網卡最大支援
+ip link show enp4s0
+# 查看 "mtu" 欄位的最大值
+
+# 4. 檢查所有 VM 的 MTU
+ansible all -i ansible/inventory.ini -m shell -a "ip link show | grep mtu"
+```
 
 **解決方案**:
 
 ```bash
-# 測試 MTU
-ping -c 3 -M do -s 8972 192.168.0.11
+# 方案 A: 改回 MTU 1500（建議）
+# 1. 修改 terraform/terraform.tfvars
+#    proxmox_mtu = 1500
+# 2. 修改 Proxmox /etc/network/interfaces
+#    mtu 1500
+# 3. 重啟網路
+systemctl restart networking
 
-# 檢查所有介面 MTU
-ansible all -i ansible/inventory.ini -m shell -a "ip link show | grep mtu"
+# 方案 B: 逐步提升 MTU 找出最大支援值
+# 測試不同的 MTU 值
+ping -c 3 -M do -s 1972 192.168.0.11  # 2000 MTU
+ping -c 3 -M do -s 3972 192.168.0.11  # 4000 MTU
+ping -c 3 -M do -s 7972 192.168.0.11  # 8000 MTU
+# 找出可用的最大值後設定
 
-# 重新配置
+# 重新配置 VM 網路
 ansible-playbook -i ansible/inventory.ini ansible/deploy-cluster.yml --tags network
 ```
+
+**注意事項**:
+- MTU 9000 需要**整條路徑**（Proxmox 網卡→交換機→VM 網卡）都支援
+- 一般家用網卡和交換機只支援 MTU 1500
+- 企業級 NIC 和交換機通常支援 MTU 9000
+- 對於小型 Kubernetes 集群，MTU 1500 已足夠，不會有明顯效能差異
 
 ---
 
@@ -859,7 +1063,8 @@ cd terraform/
 
 > [!TIP]
 > **效能優化建議**:
-> - 確保所有節點和交換機支援 MTU 9000
-> - 使用 `rp_filter = 2` (寬鬆模式) 以支援非對稱路由
-> - 定期檢查 sysctl 參數是否正確應用
-> - 使用內部集群網路 (vmbr1) 進行 Kubernetes 節點間通訊以提升效能
+> - **MTU 設定**: 預設使用 1500，僅在確認硬體支援時才啟用 MTU 9000（巨型幀）
+> - **rp_filter**: 使用 `rp_filter = 2` (寬鬆模式) 以支援非對稱路由
+> - **sysctl 參數**: 定期檢查參數是否正確應用
+> - **雙網路架構**: 使用內部集群網路 (vmbr1) 進行 Kubernetes 節點間通訊以提升效能
+> - **MTU 測試**: 使用 `ping -M do -s <size>` 測試路徑最大 MTU

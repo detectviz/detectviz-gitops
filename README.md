@@ -36,7 +36,7 @@ graph LR
   end
 
   subgraph Worker
-    VM4[app-worker<br/>12C/24GB/320GB<br/>Argo CD<br/>Keycloak<br/>Grafana<br/>Tempo<br/>PostgreSQL<br/>Vault]
+    VM4[app-worker<br/>12C/24GB<br/>System: 100GB + Data: 250GB<br/>Argo CD, Keycloak<br/>Grafana, Tempo<br/>PostgreSQL, Vault]
   end
 
   VM1 -->|API Server| VM4
@@ -53,7 +53,7 @@ graph LR
 - [P3] **cert-manager**：TLS 證書自動化管理 (Self-signed ClusterIssuer)
 - [P3] **external-secrets-operator**：從 Vault 同步秘密至 Kubernetes Secret
 - [P4] **metallb**：LoadBalancer 服務提供 (L2 模式，IP Pool 192.168.0.200-220)
-- [P4] **topolvm**：本地儲存 Volume 管理 (LVM-based CSI driver)
+- [P4] **topolvm**：本地儲存 Volume 管理 (LVM-based CSI driver，app-worker data-vg: 250GB)
 - [P4] **ingress-nginx**：L7 反向代理與 Ingress Controller (VIP 192.168.0.10)
 
 > [!NOTE]
@@ -111,7 +111,7 @@ detectviz-gitops/
 
 以下為 Detectviz 平台初始建置前的必要準備作業：
 
-### 🔐 安全性設置
+### 安全性設置
 
 #### 1. SSH 金鑰建立與發佈
 - 產生 SSH 金鑰對：`ssh-keygen -t rsa -b 4096`
@@ -125,7 +125,7 @@ detectviz-gitops/
 | Terraform 變數 | `terraform.tfvars` | 本地 `.secrets/` 目錄 |
 | SSH 私鑰 | `~/.ssh/id_rsa` | 本機（勿入 Git） |
 
-### 🖥️ Proxmox 環境準備
+### Proxmox 環境準備
 
 #### 3. Proxmox 基礎配置
 - **主機 IP**: 192.168.0.2
@@ -141,7 +141,7 @@ detectviz-gitops/
   - 安裝 qemu-guest-agent
   - Cloud-Init 自動啟動
 
-### 🌐 網路配置
+### 網路配置
 
 #### 5. Proxmox Host 網路設定
 參考：`docs/infrastructure/networking/network-info.md`
@@ -199,14 +199,18 @@ graph TD
 | **VM-1** | master-1 | 192.168.0.11 | Control Plane | 4 cores | 8 GB | 100 GB | API Server + ETCD + Prometheus |
 | **VM-2** | master-2 | 192.168.0.12 | Control Plane | 3 cores | 8 GB | 100 GB | API Server + ETCD + Mimir |
 | **VM-3** | master-3 | 192.168.0.13 | Control Plane | 3 cores | 8 GB | 100 GB | API Server + ETCD + Loki |
-| **VM-4** | app-worker | 192.168.0.14 | Application | 12 cores | 24 GB | 320 GB | Argo CD, Keycloak, Grafana, Tempo, PostgreSQL, Vault |
+| **VM-4** | app-worker | 192.168.0.14 | Application | 12 cores | 24 GB | 100GB (sys) + 250GB (data) | Argo CD, Keycloak, Grafana, Tempo, PostgreSQL, Vault |
 
 ### 設計說明
 
 - **Control Plane**: 3 節點 HA 架構，分散監控元件 (Prometheus/Mimir/Loki)
 - **Application Node**: 單一節點集中部署所有應用服務，便於展示和維護
-- **Storage**: Master 節點 100GB (OS + etcd)，Worker 節點 320GB (應用資料)
-- **總資源**: 22 CPU cores, 48 GB RAM, 620 GB 儲存空間
+- **Storage**:
+  - Master 節點: 100GB (OS + etcd)
+  - Worker 節點: 雙磁碟架構
+    - 系統磁碟 (`/dev/sda`): 100GB (OS + kubelet)
+    - 資料磁碟 (`/dev/sdb`): 250GB (TopoLVM `data-vg`，供應用動態 PV)
+- **總資源**: 22 CPU cores, 48 GB RAM, 650 GB 儲存空間
 
 ### 節點標籤與調度策略
 
@@ -325,4 +329,4 @@ graph TD
 - **網路橋接器**:
   - vmbr0 (外部網路，192.168.0.0/24，MTU 9000)
   - vmbr1 (內部集群網路，10.0.0.0/24，MTU 9000)
-- **網路介面**: 每個 VM 配置 2 個 VirtIO 網卡 (ens18 + ens19)
+- **網路介面**: 每個 VM 配置 2 個 VirtIO 網卡 (eth0 + eth1)

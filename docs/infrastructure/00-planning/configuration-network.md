@@ -100,7 +100,7 @@ Kubernetes CNI（如 Calico / Flannel）會在 `vmbr1` 上建立 Overlay Tunnel�
 [Proxmox Host]
     ┌─────────────┐
     │   enp4s0    │ ←── 實體網卡（外接）
-    │  (vmbr0)    │     MTU 9000
+    │  (vmbr0)    │     mtu 1500
     │ 192.168.0.2 │
     └─────┬───────┘
           │
@@ -108,7 +108,7 @@ Kubernetes CNI（如 Calico / Flannel）會在 `vmbr1` 上建立 Overlay Tunnel�
     │                                    │
 ┌───┴────┐                           ┌───┴────┐
 │ enp5s0 │                           │ enp5s0 │ ←── 實體網卡（內部）
-│ (vmbr1)│                           │ (vmbr1)│ MTU 9000
+│ (vmbr1)│                           │ (vmbr1)│ mtu 1500
 │10.0.0.2│                           │10.0.0.2│
 └───┬────┘                           └───┬────┘
     │                                    │
@@ -137,11 +137,20 @@ Kubernetes CNI（如 Calico / Flannel）會在 `vmbr1` 上建立 Overlay Tunnel�
 
 ---
 
+### 0. 配置備份
+```bash
+# 備份網路配置
+cp /etc/network/interfaces /etc/network/interfaces.backup
+
+# 備份 sysctl 配置
+cp /etc/sysctl.d/98-pve-networking.conf /etc/sysctl.d/98-pve-networking.conf.backup
+```
+
 ### 1. 設定實體網卡 MTU
 
 ```bash
 # 設定 enp4s0 MTU 為 9000
-ip link set dev enp4s0 mtu 9000
+ip link set dev enp4s0 mtu 1500
 ```
 
 > [!NOTE]
@@ -155,7 +164,7 @@ ip link set dev enp4s0 mtu 9000
 ```bash
 auto enp4s0
 iface enp4s0 inet manual
-    mtu 9000
+    mtu 1500
 
 # 保留 vmbr0 配置（外部網路，設 Gateway）
 # 只有 vmbr0 設 Gateway
@@ -166,11 +175,11 @@ iface vmbr0 inet static
     bridge-ports enp4s0
     bridge-stp off
     bridge-fd 0
-    mtu 9000
+    mtu 1500
 
 auto enp5s0
 iface enp5s0 inet manual
-    mtu 9000
+    mtu 1500
 
 # 新增 vmbr1 內部網路（不設 Gateway）
 # vmbr1 不設 gateway
@@ -180,12 +189,13 @@ iface vmbr1 inet static
     bridge-ports enp5s0
     bridge-stp off
     bridge-fd 0
-    mtu 9000
+    mtu 1500
 ```
 
 #### 橋接器與實體網卡對應
 - **vmbr0** ↔ **enp4s0**: 實體網卡與橋接器的綁定
-- **MTU 9000**: 支援巨型幀以提升網路效能
+- **vmbr1** ↔ **enp5s0**: 實體網卡與橋接器的綁定
+- **MTU 9000**: 支援巨型幀以提升網路效能，需要網卡、交換機、線材全部支援巨型幀（Jumbo Frames），否則會導致連線失敗
 
 ### 3. 重新啟動網路服務
 
@@ -203,15 +213,6 @@ ip route
 # 測試網路連線
 ping 192.168.0.1
 ping 8.8.8.8
-```
-
-### 5. 配置備份
-```bash
-# 備份網路配置
-cp /etc/network/interfaces /etc/network/interfaces.backup
-
-# 備份 sysctl 配置
-cp /etc/sysctl.d/98-pve-networking.conf /etc/sysctl.d/98-pve-networking.conf.backup
 ```
 
 ---
@@ -269,7 +270,7 @@ cluster_network=10.0.0.0/24  # vmbr1 集群網路
 
 [k8s_cluster:vars]
 k8s_overlay_bridge = "vmbr1"
-network_mtu = 9000
+network_mtu = 1500
 ```
 
 #### 3. Kubernetes CNI 配置
@@ -278,7 +279,7 @@ network_mtu = 9000
 ```yaml
 # calico-config.yaml (範例)
 - name: IP_AUTODETECTION_METHOD
-  value: "interface=ens19"  # ens19 對應 vmbr1
+  value: "interface=eth1"  # eth1 對應 vmbr1
 
 # 若未來使用 Calico，建議使用 CIDR 自動偵測：
 # 這樣可動態偵測內部橋接 IP，避免介面名稱變動
@@ -293,9 +294,9 @@ network_mtu = 9000
 2. 若使用 Kubernetes Overlay（如 Flannel），需確保底層 MTU 減去 50 bytes 封裝開銷：
 ```yaml
 # kube-flannel.yaml 中設定
-- --iface=ens19        # 對應 vmbr1 的介面
-- --iface-regex=ens19  # 或使用 regex 匹配
-- --mtu=8950           # 9000 - 50 (VXLAN overhead)
+- --iface=eth1        # 對應 vmbr1 的介面
+- --iface-regex=eth1  # 或使用 regex 匹配
+- --mtu=1450           # 1500 - 50 (VXLAN overhead)
 ```
 
 > [!IMPORTANT]
@@ -395,7 +396,7 @@ net.ipv4.conf.all.rp_filter = 2
 
 ---
 
-### 二、VM 節點設定（建議）
+### 二、VM 節點設定（Ansible 自動化部署）
 每個 Kubernetes 節點（Master / Worker）都需開啟 IP 轉發與橋接封包檢查，以確保 Pod 與 Service 封包能正確路由。
 
 #### 設定檔：`/etc/sysctl.d/99-k8s.conf`

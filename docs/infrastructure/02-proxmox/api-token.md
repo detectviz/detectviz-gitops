@@ -17,13 +17,12 @@ pveum role add TerraformProv -privs "Datastore.AllocateSpace Datastore.AllocateT
 # 指派權限（可視需求限制在特定節點或資源樹狀）
 pveum aclmod / -user terraform-prov@pve -role TerraformProv
 
-# Proxmox 8.x 不會自動繼承使用者 (terraform-prov@pve) 的角色權限，需要另外手動授權
-pveum aclmod / -token 'terraform-prov@pve!terraform-token' -role TerraformProv
-
 # 建立 API Token（建議使用 token 取代密碼登入）
+# ⚠️ 記下返回的 Token Secret（只顯示一次！）
 pveum user token add terraform-prov@pve terraform-token -comment "Detectviz IaC"
 
-# ⚠️ 記下返回的 Token Secret（只顯示一次！）
+# Proxmox 8.x 不會自動繼承使用者 (terraform-prov@pve) 的角色權限，需要另外手動授權
+pveum aclmod / -token 'terraform-prov@pve!terraform-token' -role TerraformProv
 ```
 
 ## 配置 Terraform 認證
@@ -32,13 +31,8 @@ pveum user token add terraform-prov@pve terraform-token -comment "Detectviz IaC"
 
 ```bash
 # 匯出 Token 環境變數（用於 Terraform 變數）
-export TF_VAR_proxmox_api_token_id='terraform-prov@pve!terraform-token'
-export TF_VAR_proxmox_api_token_secret='xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
-
-# 或直接設定 Proxmox provider 環境變數
-export PM_API_TOKEN_ID='terraform-prov@pve!terraform-token'
-export PM_API_TOKEN_SECRET='xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
-```
+export proxmox_api_token_id ='terraform-prov@pve!terraform-token'
+export proxmox_api_token_secret='xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
 
 ## 驗證認證設置
 

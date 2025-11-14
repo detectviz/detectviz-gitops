@@ -70,6 +70,15 @@ resource "proxmox_virtual_environment_vm" "k8s_masters" {
     replicate    = false # 單節點 Proxmox 環境不支援磁碟複製
   }
 
+  # EFI 磁碟配置 (UEFI BIOS 必需)
+  # 必須明確指定 storage，否則會使用 local storage 導致錯誤
+  efi_disk {
+    datastore_id      = var.proxmox_storage # 使用與系統磁碟相同的 storage
+    file_format       = "raw"
+    type              = "4m"
+    pre_enrolled_keys = false
+  }
+
   # 雙網路配置
   # 外部網路 (vmbr0)：用於管理與應用流量
   network_device {
@@ -94,14 +103,14 @@ resource "proxmox_virtual_environment_vm" "k8s_masters" {
 
   # Cloud-init 初始化配置
   initialization {
-    # 外部網路 (ens18)
+    # 外部網路 (eth0)
     ip_config {
       ipv4 {
         address = "${var.master_ips[count.index]}/24"
         gateway = var.gateway
       }
     }
-    # 內部網路 (ens19)
+    # 內部網路 (eth1)
     ip_config {
       ipv4 {
         address = "${var.master_internal_ips[count.index]}/24"
@@ -160,13 +169,34 @@ resource "proxmox_virtual_environment_vm" "k8s_workers" {
     dedicated = var.worker_memory
   }
 
-  # 系統磁碟配置
+  # 系統磁碟配置 (scsi0)
   disk {
     datastore_id = var.proxmox_storage
     interface    = "scsi0"
-    size         = parseint(replace(var.worker_system_disk_sizes[0], "G", ""), 10)
+    size         = parseint(replace(var.worker_system_disk_sizes[count.index], "G", ""), 10)
     file_format  = "raw"
     replicate    = false
+  }
+
+  # 額外資料磁碟配置 (scsi1+) - 供 TopoLVM 使用
+  dynamic "disk" {
+    for_each = try([var.worker_data_disks[count.index]], [])
+    content {
+      datastore_id = disk.value.storage
+      interface    = "scsi1"
+      size         = parseint(replace(disk.value.size, "G", ""), 10)
+      file_format  = "raw"
+      replicate    = false
+    }
+  }
+
+  # EFI 磁碟配置 (UEFI BIOS 必需)
+  # 必須明確指定 storage，否則會使用 local storage 導致錯誤
+  efi_disk {
+    datastore_id      = var.proxmox_storage # 使用與系統磁碟相同的 storage
+    file_format       = "raw"
+    type              = "4m"
+    pre_enrolled_keys = false
   }
 
   # 雙網路配置
@@ -269,7 +299,7 @@ k8s_overlay_bridge="${var.k8s_overlay_bridge}"        # Kubernetes Overlay 網�
 cluster_network="10.0.0.0/24"                       # 內部集群網路
 cluster_domain="${var.cluster_domain}"              # 內部集群域名
 
-# 網路介面對應 (ens18: 外部網路, ens19: 內部網路)
+# 網路介面對應 (eth0: 外部網路, eth1: 內部網路)
 EOF
       chmod 644 ../ansible/inventory.ini
       echo "[✓] Ansible inventory 已生成至：../ansible/inventory.ini"
@@ -306,7 +336,7 @@ output "master_nodes" {
     for i, vm in proxmox_virtual_environment_vm.k8s_masters :
     var.master_hostnames[i] => {
       ip       = var.master_ips[i]
-      hostname = "${var.master_hostnames[i]}.${var.domain}"
+      hostname = var.master_hostnames[i]
       cores    = vm.cpu[0].cores
       memory   = vm.memory[0].dedicated
     }
@@ -319,7 +349,7 @@ output "worker_nodes" {
     for i, vm in proxmox_virtual_environment_vm.k8s_workers :
     var.worker_hostnames[i] => {
       ip       = var.worker_ips[i]
-      hostname = "${var.worker_hostnames[i]}.${var.domain}"
+      hostname = var.worker_hostnames[i]
       cores    = vm.cpu[0].cores
       memory   = vm.memory[0].dedicated
     }

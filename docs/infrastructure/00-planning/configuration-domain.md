@@ -131,12 +131,7 @@ apt update
 apt install dnsmasq -y
 ```
 
-### 2. 備份 dnsmasq 配置 (proxmox)
-```bash
-cp /etc/dnsmasq.d/detectviz.conf /etc/dnsmasq.d/detectviz.conf.backup
-```
-
-### 3. 配置 dnsmasq
+### 2. 配置 dnsmasq
 
 ```ini
 # /etc/dnsmasq.d/detectviz.conf

@@ -1,8 +1,69 @@
+# ============================================
+# Kubernetes Master 節點初始化任務
+# ============================================
+# 此文件負責：
+# 1. 清理舊的 Kubernetes 安裝
+# 2. 準備 Kubernetes 目錄結構
+# 3. 執行 kubeadm init 初始化第一個 master 節點
+# 4. 自動部署 Kube-VIP 實現 Control Plane 高可用
+#
+# 重要修正：
+# - 任務順序已調整：清理 → 創建目錄 → kubeadm init → 部署 Kube-VIP
+# - Kube-VIP 在 admin.conf 創建後才部署（解決 static pod 依賴問題）
+# ============================================
 ---
+
+# ============================================
+# 階段 1: 檢查與準備
+# ============================================
+
 - name: Check if kubeadm has been initialized (檢查 kubeadm 是否已初始化)
   ansible.builtin.stat:
     path: /etc/kubernetes/admin.conf
   register: kubeadm_initialized
+  # 說明：透過檢查 admin.conf 是否存在來判斷 kubeadm 是否已初始化
+  # 如果文件存在，跳過清理和初始化步驟
+
+- name: "[HA] Install Kube-VIP required packages (安裝 Kube-VIP 所需套件)"
+  ansible.builtin.apt:
+    name:
+      - arping  # 用於發送 ARP 廣播，宣告 VIP 位置
+      - jq      # JSON 處理工具，用於 Kube-VIP 腳本
+    state: present
+  become: true
+  # 說明：這些套件必須在 Kube-VIP 部署前安裝
+
+# ============================================
+# 階段 2: 清理舊安裝（僅在未初始化時執行）
+# ============================================
+
+- name: Clean up any previous Kubernetes installation (清理任何之前的 Kubernetes 安裝)
+  ansible.builtin.command: kubeadm reset --force --cri-socket unix:///var/run/containerd/containerd.sock
+  ignore_errors: true
+  become: true
+  when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0 and not kubeadm_initialized.stat.exists"
+  # 說明：使用 kubeadm reset 清理舊的集群配置
+  # --force：不詢問確認
+  # --cri-socket：指定 containerd 運行時
+  # 條件：只在第一個 master 且未初始化時執行
+
+- name: Remove old Kubernetes manifests and configs (移除舊的 Kubernetes manifests 和配置)
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/kubernetes      # Kubernetes 配置目錄
+    - /var/lib/kubelet     # Kubelet 數據目錄
+    - /var/lib/etcd        # etcd 數據目錄
+  ignore_errors: true
+  become: true
+  when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0 and not kubeadm_initialized.stat.exists"
+  # 說明：徹底清理所有 Kubernetes 相關目錄
+  # 確保重新部署時沒有殘留配置干擾
+
+# ============================================
+# 階段 3: 創建必要的目錄結構
+# ============================================
 
 - name: Ensure Kubernetes directories exist (確保 Kubernetes 目錄存在)
   ansible.builtin.file:
@@ -12,52 +73,22 @@
     owner: "{{ item.owner | default('root') }}"
     group: "{{ item.group | default('root') }}"
   loop:
-    - { path: "/etc/kubernetes", mode: "0755" }
-    - { path: "/etc/kubernetes/manifests", mode: "0755" }
-    - { path: "/var/lib/kubelet", mode: "0750" }
-    - { path: "/var/lib/etcd", mode: "0700" }
+    - { path: "/etc/kubernetes", mode: "0755" }           # 主配置目錄
+    - { path: "/etc/kubernetes/manifests", mode: "0755" } # 靜態 Pod manifests
+    - { path: "/var/lib/kubelet", mode: "0750" }          # Kubelet 工作目錄
+    - { path: "/var/lib/etcd", mode: "0700" }             # etcd 數據目錄（需嚴格權限）
   become: true
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
+  # 說明：創建 Kubernetes 所需的目錄結構
+  # 權限設定：
+  # - 0755：可讀可執行（配置目錄）
+  # - 0750：僅 root 和 group 可訪問（kubelet）
+  # - 0700：僅 root 可訪問（etcd，最高安全性）
 
-- name: "[P2] Install Kube-VIP required packages"
-  ansible.builtin.apt:
-    name: ["arping", "jq"]
-    state: present
-  become: true
-
-- name: "[P2] Download Kube-VIP Manifest"
-  ansible.builtin.get_url:
-    url: "https://raw.githubusercontent.com/kube-vip/kube-vip-cloud-provider/main/manifest/kube-vip-cloud-controller.yaml"
-    dest: "/etc/kubernetes/manifests/kube-vip-cloud-controller.yaml"
-    mode: "0644"
-  become: true
-  when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
-
-- name: "[P2] Create Kube-VIP DaemonSet Manifest for Control Plane HA"
-  ansible.builtin.template:
-    src: kube-vip-ds.yaml.j2
-    dest: "/etc/kubernetes/manifests/kube-vip-ds.yaml"
-    mode: "0644"
-  become: true
-  when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
-
-- name: Clean up any previous Kubernetes installation (清理任何之前的 Kubernetes 安裝)
-  ansible.builtin.command: kubeadm reset --force --cri-socket unix:///var/run/containerd/containerd.sock
-  ignore_errors: true
-  become: true
-  when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
-
-- name: Remove old Kubernetes manifests and configs (移除舊的 Kubernetes manifests 和配置)
-  ansible.builtin.file:
-    path: "{{ item }}"
-    state: absent
-  loop:
-    - /etc/kubernetes
-    - /var/lib/kubelet
-    - /var/lib/etcd
-  ignore_errors: true
-  become: true
-  when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
+# ============================================
+# Kube-VIP 會在 kubeadm init 完成後自動部署
+# 不需要在此階段準備 manifest
+# ============================================
 
 - name: Restart containerd to apply new sandbox image (重啟 containerd 以應用新的 sandbox 鏡像)
   ansible.builtin.systemd:
@@ -99,7 +130,7 @@
 - name: Initialize first control plane node (初始化第一個控制平面節點)
   ansible.builtin.command: >
     timeout 600 kubeadm init --config /tmp/kubeadm-config.yaml
-    --ignore-preflight-errors=all --skip-phases=addon/kube-proxy
+    --ignore-preflight-errors=all
     --v=3
   args:
     creates: /etc/kubernetes/admin.conf
@@ -120,6 +151,25 @@
     mode: "0600"
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
 
+- name: Ensure .kube directory exists for ansible user (確保 ansible 用戶的 .kube 目錄存在)
+  ansible.builtin.file:
+    path: "/home/{{ ansible_user }}/.kube"
+    state: directory
+    mode: "0755"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+  when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
+
+- name: Copy admin kubeconfig to ansible user (複製 admin kubeconfig 到 ansible 用戶)
+  ansible.builtin.copy:
+    src: /etc/kubernetes/admin.conf
+    dest: "/home/{{ ansible_user }}/.kube/config"
+    remote_src: yes
+    mode: "0600"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+  when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
+
 - name: Fetch admin kubeconfig to control node (獲取 admin kubeconfig 到控制節點)
   ansible.builtin.fetch:
     src: /etc/kubernetes/admin.conf
@@ -130,6 +180,71 @@
 - name: Wait for API server to be ready (等待 API server 準備就緒)
   ansible.builtin.pause:
     seconds: 30
+  when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
+
+# ============================================
+# 自動部署 Kube-VIP（完全自動化 HA）
+# ============================================
+# 說明：在 kubeadm init 完成後立即部署 Kube-VIP
+# 此時 /etc/kubernetes/admin.conf 已存在，Kube-VIP 可正常運行
+# ============================================
+
+- name: "[HA] Deploy Kube-VIP static pod for Control Plane HA (部署 Kube-VIP 靜態 Pod)"
+  ansible.builtin.template:
+    src: kube-vip-static-pod.yaml.j2
+    dest: "/etc/kubernetes/manifests/kube-vip.yaml"
+    mode: "0644"
+  become: true
+  when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
+
+- name: "[HA] Wait for Kube-VIP pod to start (等待 Kube-VIP Pod 啟動)"
+  ansible.builtin.pause:
+    seconds: 15
+  when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
+
+- name: "[HA] Verify VIP is bound to interface (驗證 VIP 已綁定到網卡)"
+  ansible.builtin.shell: ip addr show eth0 | grep -q "{{ cluster_vip }}"
+  register: vip_check
+  failed_when: false
+  changed_when: false
+  when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
+
+- name: "[HA] Display VIP status (顯示 VIP 狀態)"
+  ansible.builtin.debug:
+    msg: >
+      {% if vip_check.rc == 0 %}
+      ✅ VIP {{ cluster_vip }} 已成功綁定到 eth0 網卡
+      {% else %}
+      ⚠️  VIP {{ cluster_vip }} 尚未綁定，將手動綁定 VIP
+      {% endif %}
+  when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
+
+- name: "[HA] Manually bind VIP if not bound (如果未綁定則手動綁定 VIP)"
+  ansible.builtin.shell: |
+    # 添加 VIP 到網卡
+    ip addr add {{ cluster_vip }}/32 dev eth0 || true
+    # 發送 ARP 廣播宣告 VIP
+    arping -c 3 -A -I eth0 {{ cluster_vip }} || true
+  become: true
+  when:
+    - "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
+    - vip_check.rc != 0
+
+- name: "[HA] Verify VIP is now bound (再次驗證 VIP 綁定)"
+  ansible.builtin.shell: ip addr show eth0 | grep -q "{{ cluster_vip }}"
+  register: vip_final_check
+  failed_when: false
+  changed_when: false
+  when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
+
+- name: "[HA] Display final VIP status (顯示最終 VIP 狀態)"
+  ansible.builtin.debug:
+    msg: >
+      {% if vip_final_check.rc == 0 %}
+      ✅ VIP {{ cluster_vip }} 已成功綁定到 eth0 網卡
+      {% else %}
+      ❌ VIP {{ cluster_vip }} 綁定失敗，請手動檢查
+      {% endif %}
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
 
 - name: Check DNS resolution for API server (檢查 API server 的 DNS 解析)
@@ -203,23 +318,43 @@
     kubeadm_certificate_key: "{{ kubeadm_upload_certs.stdout | regex_search('[a-f0-9]{64}') }}"
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
 
-- name: Create kubeadm join command token (創建 kubeadm 加入命令 token)
+# ============================================
+# 生成 Join Commands（使用 kubeadm 生成）
+# ============================================
+# 說明：
+# - Worker 節點使用 master-1 實際 IP（穩定直接）
+# - 後續 Master 節點使用 VIP（實現真正的 HA）
+# - 使用 kubeadm token create 確保 token 正確生成
+# ============================================
+
+- name: Generate join commands using kubeadm (使用 kubeadm 生成 join 命令)
   ansible.builtin.shell: |
-    # 使用 kubectl 創建 token 和 join 命令
-    TOKEN=$(kubectl --kubeconfig=/etc/kubernetes/admin.conf create token --ttl=24h)
-    CA_CERT_HASH=$(openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outform der 2>/dev/null | openssl dgst -sha256 -hex | sed 's/^.* //')
-    echo "kubeadm join {{ control_plane_endpoint }} --token $TOKEN --discovery-token-ca-cert-hash sha256:$CA_CERT_HASH"
-  register: kubeadm_join_command
+    # 使用 kubeadm 生成基礎 join command
+    WORKER_JOIN=$(kubeadm token create --print-join-command)
+
+    # 提取 token 和 ca-cert-hash
+    TOKEN=$(echo $WORKER_JOIN | awk '{print $5}')
+    CA_HASH=$(echo $WORKER_JOIN | awk '{print $NF}')
+
+    # 生成 master join command（使用 VIP）
+    MASTER_JOIN="kubeadm join {{ control_plane_vip_endpoint }} --token $TOKEN --discovery-token-ca-cert-hash $CA_HASH --control-plane --certificate-key {{ kubeadm_certificate_key }}"
+
+    # 輸出兩個 join commands
+    echo "WORKER:$WORKER_JOIN"
+    echo "MASTER:$MASTER_JOIN"
+  register: join_commands_output
   changed_when: false
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
 
-- name: Set join command facts on master (在 master 上設置加入命令事實)
+- name: Parse join commands (解析 join 命令)
   ansible.builtin.set_fact:
-    control_plane_join_command: "{{ kubeadm_join_command.stdout }} --control-plane{{ ' --certificate-key ' + kubeadm_certificate_key if kubeadm_certificate_key is defined else '' }}"
-    worker_join_command: "{{ kubeadm_join_command.stdout }}"
+    # Worker 使用 master-1 IP
+    worker_join_command: "{{ join_commands_output.stdout_lines | select('match', '^WORKER:') | first | regex_replace('^WORKER:', '') }}"
+    # Master 使用 VIP
+    control_plane_join_command: "{{ join_commands_output.stdout_lines | select('match', '^MASTER:') | first | regex_replace('^MASTER:', '') }}"
   when:
     - "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
-    - kubeadm_join_command is defined
+    - join_commands_output is defined
 
 - name: "[P2] Download Calico Manifest"
   ansible.builtin.get_url:

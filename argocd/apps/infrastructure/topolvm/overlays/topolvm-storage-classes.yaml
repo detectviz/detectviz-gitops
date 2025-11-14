@@ -1,23 +1,26 @@
 ---
 # TopoLVM StorageClass 配置
 # 使用前請先安裝 TopoLVM：https://github.com/topolvm/topolvm
-# 並在每個節點配置 LVM 卷組
+# 並在 app-worker 節點配置 LVM Volume Group: data-vg
 
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: detectviz-data
+  name: topolvm-provisioner
   labels:
     app.kubernetes.io/part-of: detectviz-platform
   annotations:
     argocd.argoproj.io/sync-wave: "-2"
+    storageclass.kubernetes.io/is-default-class: "true"
     storageclass.kubernetes.io/description: |
-      資料磁盤儲存池 (TopoLVM)
-      用途: 大容量資料儲存 (ai: 400G, app: 200G)
+      TopoLVM 動態儲存供應
+      節點: app-worker (VM-4)
+      Volume Group: data-vg (250GB)
+      用途: PostgreSQL, Tempo, Vault 等應用資料
 provisioner: topolvm.io
 parameters:
-  lvmdName: data-vg
-  csi.storage.k8s.io/fstype: ext4
+  "csi.storage.k8s.io/fstype": "ext4"
+  "topolvm.io/device-class": "ssd"
 reclaimPolicy: Delete
 volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true

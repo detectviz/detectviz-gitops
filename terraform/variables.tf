@@ -57,9 +57,9 @@ variable "proxmox_bridge" {
 }
 
 variable "proxmox_mtu" {
-  description = "Proxmox 橋接器與 VM 網卡的 MTU（最大傳輸單元），設定為 9000 以啟用巨型幀（Jumbo Frames），提升網路效能。"
+  description = "Proxmox 橋接器與 VM 網卡的 MTU（最大傳輸單元）。標準值為 1500，如需啟用巨型幀（Jumbo Frames）且硬體支援可設為 9000。"
   type        = number
-  default     = 9000
+  default     = 1500
 }
 
 variable "k8s_overlay_bridge" {
@@ -165,13 +165,13 @@ variable "worker_memory" {
 }
 
 variable "worker_system_disk_sizes" {
-  description = "Worker 節點的系統磁碟大小列表。"
+  description = "Worker 節點的系統磁碟大小列表（用於 OS 與系統服務）。"
   type        = list(string)
-  default     = ["320G"]
+  default     = ["100G"]
 }
 
 variable "worker_data_disks" {
-  description = "為 Worker 節點配置額外的資料磁碟。可留空 `[]` 以略過。"
+  description = "Worker 節點的額外資料磁碟配置列表（供 TopoLVM 等儲存系統使用）。每個元素包含 size 和 storage。範例：[{size = \"250G\", storage = \"nvme-vm\"}]，留空 [] 則不建立額外磁碟。"
   type = list(object({
     size    = string
     storage = string

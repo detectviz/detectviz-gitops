@@ -65,8 +65,8 @@ validate_proxmox_host() {
     validate_test "vmbr1 exists" "ip link show vmbr1"
 
     # Validate MTU settings
-    validate_test "vmbr0 MTU = 9000" "ip link show vmbr0 | grep -q 'mtu 9000'"
-    validate_test "vmbr1 MTU = 9000" "ip link show vmbr1 | grep -q 'mtu 9000'"
+    validate_test "vmbr0 MTU = 1500" "ip link show vmbr0 | grep -q 'mtu 1500'"
+    validate_test "vmbr1 MTU = 1500" "ip link show vmbr1 | grep -q 'mtu 1500'"
 
     # Validate IP configuration
     validate_test "vmbr0 IP = 192.168.0.2" "ip addr show vmbr0 | grep -q '192.168.0.2/24'"
@@ -111,25 +111,25 @@ validate_vms() {
         fi
 
         # Validate network interfaces
-        validate_test "$node_name: ens18 exists" \
-            "ssh ubuntu@$external_ip 'ip link show ens18'"
+        validate_test "$node_name: eth0 exists" \
+            "ssh ubuntu@$external_ip 'ip link show eth0'"
 
-        validate_test "$node_name: ens19 exists" \
-            "ssh ubuntu@$external_ip 'ip link show ens19'"
+        validate_test "$node_name: eth1 exists" \
+            "ssh ubuntu@$external_ip 'ip link show eth1'"
 
         # Validate IP configuration
-        validate_test "$node_name: ens18 IP = $external_ip" \
-            "ssh ubuntu@$external_ip 'ip addr show ens18 | grep -q $external_ip'"
+        validate_test "$node_name: eth0 IP = $external_ip" \
+            "ssh ubuntu@$external_ip 'ip addr show eth0 | grep -q $external_ip'"
 
-        validate_test "$node_name: ens19 IP = $internal_ip" \
-            "ssh ubuntu@$external_ip 'ip addr show ens19 | grep -q $internal_ip'"
+        validate_test "$node_name: eth1 IP = $internal_ip" \
+            "ssh ubuntu@$external_ip 'ip addr show eth1 | grep -q $internal_ip'"
 
         # Validate MTU
-        validate_test "$node_name: ens18 MTU = 9000" \
-            "ssh ubuntu@$external_ip 'ip link show ens18 | grep -q \"mtu 9000\"'"
+        validate_test "$node_name: eth0 MTU = 1500" \
+            "ssh ubuntu@$external_ip 'ip link show eth0 | grep -q \"mtu 1500\"'"
 
-        validate_test "$node_name: ens19 MTU = 9000" \
-            "ssh ubuntu@$external_ip 'ip link show ens19 | grep -q \"mtu 9000\"'"
+        validate_test "$node_name: eth1 MTU = 1500" \
+            "ssh ubuntu@$external_ip 'ip link show eth1 | grep -q \"mtu 1500\"'"
 
         # Validate sysctl parameters
         validate_test "$node_name: IP forwarding enabled" \

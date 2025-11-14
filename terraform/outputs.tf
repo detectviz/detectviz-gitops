@@ -25,7 +25,7 @@ output "master_nodes_details" {
     var.master_hostnames[i] => {
       vm_id     = vm.vm_id
       ip        = var.master_ips[i]
-      hostname  = "${var.master_hostnames[i]}.${var.domain}"
+      hostname  = var.master_hostnames[i]
       fqdn      = "${var.master_hostnames[i]}.${var.domain}"
       cores     = vm.cpu[0].cores
       memory    = "${vm.memory[0].dedicated / 1024} GB"
@@ -45,7 +45,7 @@ output "worker_nodes_details" {
     var.worker_hostnames[i] => {
       vm_id             = vm.vm_id
       ip                = var.worker_ips[i]
-      hostname          = "${var.worker_hostnames[i]}.${var.domain}"
+      hostname          = var.worker_hostnames[i]
       fqdn              = "${var.worker_hostnames[i]}.${var.domain}"
       cores             = vm.cpu[0].cores
       memory            = "${vm.memory[0].dedicated / 1024} GB"

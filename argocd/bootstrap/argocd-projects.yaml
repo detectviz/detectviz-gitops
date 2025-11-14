@@ -9,9 +9,9 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "-10" # 先於 root app 建立 Project
 spec:
-  description: |
-    Bootstrap Project - 僅允許 root Argo CD Application 管理 ApplicationSets 與 AppProjects。
-    參考 Argo CD 官方建議，將 Root App 與業務應用隔離於獨立 Project，避免使用 default 專案。
+  # 僅允許 root Argo CD Application 管理 ApplicationSets 與 AppProjects。
+  # 參考 Argo CD 官方建議，將 Root App 與業務應用隔離於獨立 Project，避免使用 default 專案
+  description: "Bootstrap Project"
   sourceRepos:
     - https://github.com/detectviz/detectviz-gitops.git
     - git@github.com:detectviz/detectviz-gitops.git
@@ -86,7 +86,8 @@ metadata:
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
-  description: "Detectviz Platform - 管理監控、平台與 AI 服務的部署範圍與權限控制 (最小權限原則)"
+  # 管理監控、平台與 AI 服務的部署範圍與權限控制 (最小權限原則)
+  description: "Detectviz Platform"
 
   sourceRepos:
     # GitOps 倉庫

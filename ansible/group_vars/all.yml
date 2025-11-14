@@ -7,8 +7,9 @@
 cluster_name: detectviz # 集群名稱，用於識別 Kubernetes 集群
 kubernetes_version: "1.32.0" # Kubernetes 版本號
 kubernetes_package_version: "" # Kubernetes 套件版本
-control_plane_endpoint: "k8s-api.detectviz.internal:6443" # 控制平面端點，指向 HA VIP
-cluster_vip: "192.168.0.10" # HA VIP
+control_plane_endpoint: "192.168.0.11:6443" # 控制平面端點，第一次初始化使用 master-1 實際 IP
+cluster_vip: "192.168.0.10" # HA VIP（Kube-VIP 部署後才啟用）
+control_plane_vip_endpoint: "k8s-api.detectviz.internal:6443" # HA VIP 端點（用於後續 master 加入）
 
 # 網路配置
 pod_network_cidr: "10.244.0.0/16" # Pod 網路 CIDR
@@ -43,3 +44,16 @@ detectviz_hosts_block: |
 # ============================================
 reset_cluster: false # 是否重置現有集群，設為 true 會清除所有 Kubernetes 配置和資料
 force_rejoin: false # 是否強制重新加入節點，設為 true 會重置並重新加入所有 worker 節點
+
+# ============================================
+# 儲存配置變數 (Storage Configuration)
+# ============================================
+configure_lvm: true # 是否配置 LVM 邏輯卷管理，用於 TopoLVM 動態儲存
+
+# LVM Volume Group 配置
+lvm_volume_groups:
+  - name: topolvm-vg          # Volume Group 名稱
+    devices:
+      - /dev/sdb              # 使用的物理設備（250GB 資料磁碟）
+    pvs:
+      - /dev/sdb              # Physical Volume 列表

@@ -38,6 +38,20 @@ scheduler:
 
 # API 服務器配置
 apiServer:
+  # API Server 證書的 Subject Alternative Names
+  # 包含所有可能用於訪問 API Server 的地址
+  certSANs:
+    - "{{ cluster_vip }}"                                 # VIP 地址
+    - "k8s-api.detectviz.internal"                        # VIP 域名
+    - "k8s-api"                                           # VIP 短名稱
+    - "192.168.0.11"                                      # Master-1 IP
+    - "192.168.0.12"                                      # Master-2 IP
+    - "192.168.0.13"                                      # Master-3 IP
+    - "master-1"                                          # Master-1 主機名
+    - "master-2"                                          # Master-2 主機名
+    - "master-3"                                          # Master-3 主機名
+    - "localhost"                                         # 本地訪問
+    - "127.0.0.1"                                         # 本地 IP
   extraArgs:
     - name: authorization-mode
       value: Node,RBAC                                    # 授權模式：節點授權和 RBAC

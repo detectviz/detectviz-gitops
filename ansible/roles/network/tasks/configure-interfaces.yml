@@ -21,27 +21,27 @@
   become: true
   changed_when: false
 
-- name: Set MTU for external network interface (設定外部網路介面 MTU - ens18)
+- name: Set MTU for external network interface (設定外部網路介面 MTU - eth0)
   ansible.builtin.command: >
-    ip link set ens18 mtu {{ network_mtu | default(1500) }}
+    ip link set eth0 mtu {{ network_mtu | default(1500) }}
   become: true
   ignore_errors: true
   changed_when: false
 
-- name: Set MTU for internal cluster network interface (設定內部集群網路介面 MTU - ens19)
+- name: Set MTU for internal cluster network interface (設定內部集群網路介面 MTU - eth1)
   ansible.builtin.command: >
-    ip link set ens19 mtu {{ network_mtu | default(1500) }}
+    ip link set eth1 mtu {{ network_mtu | default(1500) }}
   become: true
   ignore_errors: true
   changed_when: false
 
-- name: Verify external network interface status (驗證外部網路介面狀態 - ens18)
-  ansible.builtin.command: ip addr show ens18
+- name: Verify external network interface status (驗證外部網路介面狀態 - eth0)
+  ansible.builtin.command: ip addr show eth0
   register: network_status_external
   changed_when: false
 
-- name: Verify internal cluster network interface status (驗證內部集群網路介面狀態 - ens19)
-  ansible.builtin.command: ip addr show ens19
+- name: Verify internal cluster network interface status (驗證內部集群網路介面狀態 - eth1)
+  ansible.builtin.command: ip addr show eth1
   register: network_status_internal
   changed_when: false
 
@@ -55,10 +55,10 @@
       Node: {{ inventory_hostname }}
       Role: {{ 'Worker' if 'workers' in group_names else 'Master' }}
 
-      External Network Interface (ens18 - vmbr0):
+      External Network Interface (eth0 - vmbr0):
       {{ network_status_external.stdout }}
 
-      Internal Cluster Network Interface (ens19 - vmbr1):
+      Internal Cluster Network Interface (eth1 - vmbr1):
       {{ network_status_internal.stdout }}
 
       MTU: {{ network_mtu | default(1500) }}
