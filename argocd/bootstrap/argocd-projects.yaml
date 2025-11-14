@@ -45,6 +45,10 @@ spec:
       kind: MutatingWebhookConfiguration
     - group: admissionregistration.k8s.io
       kind: ValidatingWebhookConfiguration
+    - group: scheduling.k8s.io
+      kind: PriorityClass
+    - group: storage.k8s.io
+      kind: CSIDriver
   namespaceResourceWhitelist:
     - group: argoproj.io
       kind: Application
@@ -80,6 +84,12 @@ spec:
       kind: IPAddressPool
     - group: metallb.io
       kind: L2Advertisement
+    - group: cert-manager.io
+      kind: Certificate
+    - group: cert-manager.io
+      kind: Issuer
+    - group: policy
+      kind: PodDisruptionBudget
 
 ---
 apiVersion: argoproj.io/v1alpha1
