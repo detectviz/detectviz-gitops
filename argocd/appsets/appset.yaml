@@ -15,17 +15,17 @@ spec:
     - list:
         elements:
           - appName: cert-manager
-            path: apps/infrastructure/cert-manager/overlays
+            path: argocd/apps/infrastructure/cert-manager/overlays
           - appName: metallb
-            path: apps/infrastructure/metallb/overlays
+            path: argocd/apps/infrastructure/metallb/overlays
           - appName: ingress-nginx
-            path: apps/infrastructure/ingress-nginx/overlays
+            path: argocd/apps/infrastructure/ingress-nginx/overlays
           - appName: topolvm
-            path: apps/infrastructure/topolvm/overlays
+            path: argocd/apps/infrastructure/topolvm/overlays
           - appName: external-secrets-operator
-            path: apps/infrastructure/external-secrets-operator/overlays
+            path: argocd/apps/infrastructure/external-secrets-operator/overlays
           - appName: vault
-            path: apps/infrastructure/vault/overlays
+            path: argocd/apps/infrastructure/vault/overlays
 
   template:
     metadata:
