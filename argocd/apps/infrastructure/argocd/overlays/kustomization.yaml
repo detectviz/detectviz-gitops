@@ -1,12 +1,16 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# 引用 base HA 設定
-resources:
-  - ../base
+# ArgoCD 配置管理 (不包含部署本身,因為 ArgoCD 由 Ansible 安裝)
+# 這個 overlay 只管理 ArgoCD 的配置文件
 
-# 確保所有 ArgoCD 元件都部署在 app-worker 節點
-patches:
-  - path: patch-nodeselector-app-worker.yaml
-    target:
-      kind: (Deployment|StatefulSet) # 套用到所有 Pod 控制器
+namespace: argocd
+
+resources:
+  # ArgoCD 配置
+  - argocd-cm.yaml
+
+# 注意:
+# - ArgoCD 本身由 Ansible 通過 Helm chart 安裝
+# - 這個 Application 只管理 ArgoCD 的配置,不管理部署本身
+# - 避免與 Ansible 安裝的 ArgoCD 衝突

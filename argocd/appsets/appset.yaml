@@ -14,6 +14,8 @@ spec:
   generators:
     - list:
         elements:
+          - appName: argocd
+            path: argocd/apps/infrastructure/argocd/overlays
           - appName: cert-manager
             path: argocd/apps/infrastructure/cert-manager/overlays
           - appName: metallb
