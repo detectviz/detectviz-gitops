@@ -261,11 +261,192 @@
 
 ⏺ Bash(for app in prometheus loki grafana postgresql; do echo "=== $app ===" && ls /Users/zoe/Documents/github/detectviz-gitops/argocd/apps/observability/$app/
       2>/dev/…)
-  ⎿  Running…
+  ⎿  === prometheus ===
+     overlays
+     … +8 lines (ctrl+o to expand)
 
-──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- Bash command
+⏺ 所有應用都只有 overlays 目錄。但 ApplicationSet 的 path 是 argocd/apps/observability/*,這會匹配到應用目錄(如 prometheus),而不是 overlays 目錄。我需要修改
+  ApplicationSet 的配置,或者修改目錄結構。
 
-   for app in prometheus loki grafana postgresql; do echo "=== $app ===" && ls /Users/zoe/Documents/github/detectviz-gitops/argocd/apps/observability/$app/
-   2>/dev/null || echo "目錄不存在"; echo ""; done
-   檢查幾個主要應用的目錄結構
+  讓我檢查一個 overlays 目錄的內容:
+
+⏺ Bash(ls /Users/zoe/Documents/github/detectviz-gitops/argocd/apps/observability/prometheus/overlays/)
+  ⎿  kustomization.yaml
+     patch-nodeselector-tolerations.yaml
+     values.yaml
+
+⏺ Read(~/Documents/github/detectviz-gitops/argocd/apps/observability/prometheus/overlays/kustomization.yaml)
+  ⎿  Read 9 lines
+
+⏺ 我看到了,overlays 引用了 ../base。所以結構應該是:
+  - argocd/apps/observability/prometheus/base/
+  - argocd/apps/observability/prometheus/overlays/
+
+  但目前只有 overlays。讓我檢查 base 目錄是否存在:
+
+⏺ Bash(ls /Users/zoe/Documents/github/detectviz-gitops/argocd/apps/observability/prometheus/base/ 2>&1)
+  ⎿  Error: Exit code 1
+     ls: /Users/zoe/Documents/github/detectviz-gitops/argocd/apps/observability/prometheus/base/: No such file or directory
+
+⏺ Bash(find /Users/zoe/Documents/github/detectviz-gitops/argocd/apps/observability/prometheus -name "*.yaml" -type f | head -10)
+  ⎿  /Users/zoe/Documents/github/detectviz-gitops/argocd/apps/observability/prometheus/overlays/kustomization.yaml
+     /Users/zoe/Documents/github/detectviz-gitops/argocd/apps/observability/prometheus/overlays/values.yaml
+     /Users/zoe/Documents/github/detectviz-gitops/argocd/apps/observability/prometheus/overlays/patch-nodeselector-tolerations.yaml
+
+⏺ base 目錄不存在!這表示這些應用配置還沒有完成。讓我檢查 observability/overlays 目錄,看看那裡是否有配置:
+
+⏺ Bash(ls -la /Users/zoe/Documents/github/detectviz-gitops/argocd/apps/observability/overlays/ 2>&1)
+  ⎿  total 72
+     drwx------@  9 zoe  staff   288 11  9 09:22 .
+     drwxr-xr-x@ 14 zoe  staff   448 11  9 08:54 ..
+     … +7 lines (ctrl+o to expand)
+
+⏺ Bash(ls -la /Users/zoe/Documents/github/detectviz-gitops/argocd/apps/infrastructure/cert-manager/)
+  ⎿  total 24
+     drwxr-xr-x@  5 zoe  staff    160 11  5 21:23 .
+     drwxr-xr-x@ 10 zoe  staff    320 11  9 08:54 ..
+     … +3 lines (ctrl+o to expand)
+
+⏺ 我發現了!observability/overlays 目錄存在並且有配置文件。這表示有一個統一的 observability overlay。讓我檢查它的配置:
+
+⏺ Read(~/Documents/github/detectviz-gitops/argocd/apps/observability/overlays/kustomization.yaml)
+  ⎿  Read 11 lines
+
+⏺ 這個 overlays 是針對 Alloy (Grafana Agent) 的配置,不是完整的 observability 堆疊。
+
+  看來這些應用的 base 配置還沒有準備好。根據當前的情況,我應該:
+
+  1. 先完成當前階段的部署驗證
+  2. 記錄應用層配置還未完成的狀態
+  3. 更新 deploy.md 以反映實際情況
+
+  讓我創建一個當前部署狀態的總結:
+
+⏺ Write(~/Documents/github/detectviz-gitops/deployment-status-20251114-2356.md)
+  ⎿  Wrote 369 lines to ../../../../../deployment-status-20251114-2356.md
+     # DetectViz GitOps 部署狀態報告
+     **日期**: 2025-11-14 23:56
+     **報告類型**: 部署進度檢查點
+     ---
+     ## 📊 整體部署進度
+     ### Phase 1-5: 基礎設施層 ✅ 完成
+     … +359 lines (ctrl+o to expand)
+
+⏺ 現在讓我 commit 所有變更:
+
+⏺ Bash(git add -A && git commit -m "feat: Enable apps-appset and add deployment status report…)
+  ⎿  [main 712e915] feat: Enable apps-appset and add deployment status report
+      4 files changed, 731 insertions(+), 1 deletion(-)
+      create mode 100644 deploy-app.log
+     … +4 lines (ctrl+o to expand)
+
+⏺ 完美!現在讓我檢查 ApplicationSet 是否已經創建:
+
+⏺ Bash(sleep 15 && kubectl get applicationset -n argocd)
+  ⎿  NAME               AGE
+     argocd-bootstrap   7h44m
+     detectviz-gitops   7h44m
+
+⏺ Bash(kubectl get applications -n argocd | grep -v "infra-\|root\|cluster-bootstrap")
+  ⎿  NAME                              SYNC STATUS   HEALTH STATUS
+
+> argocd/apps/identity/keycloak 是否要比observability優先
+
+⏺ 沒有看到 apps-appset ApplicationSet。這是因為變更還沒有被 ArgoCD 同步。讓我先回答您的問題,然後刷新 root application。
+
+  關於 Keycloak 是否應該比 observability 優先:
+
+  是的,Keycloak 應該優先部署,原因如下:
+
+  1. 身份認證依賴: 如果其他應用(如 Grafana)需要使用 SSO/OIDC 認證,Keycloak 必須先部署
+  2. 應用層級: identity (Keycloak) 是平台層服務,observability 是應用層服務
+  3. 依賴關係: Grafana 可以配置使用 Keycloak 作為認證提供者
+
+  建議的部署順序應該是:
+  1. identity/keycloak (身份認證平台)
+  2. observability/postgresql (資料庫,為其他服務提供存儲)
+  3. observability/prometheus (指標收集)
+  4. observability/loki (日誌)
+  5. observability/tempo (追蹤)
+  6. observability/grafana (可視化,可集成 Keycloak SSO)
+
+  讓我刷新 root application 以同步新的 ApplicationSet 配置:
+
+⏺ Bash(kubectl patch application root -n argocd --type merge -p '{"metadata":{"annotations":{"argocd.argoproj.io/refresh":"hard"}}}')
+  ⎿  application.argoproj.io/root patched
+
+⏺ Bash(sleep 15 && kubectl get applicationset -n argocd)
+  ⎿  NAME               AGE
+     argocd-bootstrap   7h45m
+     detectviz-gitops   7h45m
+
+⏺ 還沒有出現 apps-appset。讓我檢查 root application 的同步狀態,並檢查是否有錯誤:
+
+⏺ Bash(kubectl get application root -n argocd -o jsonpath='{.status.sync.status}' && echo "" && kubectl get application root -n argocd -o
+      jsonpath='{.status.operationS…)
+  ⎿  Unknown
+     Succeeded
+
+⏺ Bash(kubectl logs -n argocd -l app.kubernetes.io/name=argocd-applicationset-controller --tail=30 --timestamps | grep -i "apps-appset\|error" | tail -20)
+  ⎿  (No content)
+
+⏺ root application 同步成功但狀態是 Unknown。讓我手動觸發 root application 的同步:
+
+⏺ Bash(kubectl patch application root -n argocd --type json -p='[{"op": "replace", "path": "/operation", "value": {"sync": {"revision": "HEAD", "prune":
+      true}}}]')
+  ⎿  application.argoproj.io/root patched
+
+⏺ Bash(sleep 20 && kubectl get applicationset -n argocd)
+  ⎿  NAME               AGE
+     argocd-bootstrap   7h45m
+     detectviz-gitops   7h45m
+
+⏺ Bash(kubectl get application root -n argocd)
+  ⎿  NAME   SYNC STATUS   HEALTH STATUS
+     root   Unknown       Healthy
+
+⏺ apps-appset 還是沒有出現。讓我檢查 root application 引用的路徑,看看它是否正確指向 appsets 目錄:
+
+⏺ Bash(kubectl get application root -n argocd -o yaml | grep -A 10 "spec:")
+  ⎿  spec:
+       destination:
+         namespace: argocd
+     … +8 lines (ctrl+o to expand)
+
+⏺ Bash(kubectl get applicationset -n argocd -o yaml | grep -B 5 "apps-appset" || echo "No apps-appset found in any ApplicationSet")
+  ⎿  No apps-appset found in any ApplicationSet
+
+⏺ root application 指向正確的路徑 (argocd/appsets)。讓我檢查 root application 同步後應該創建的資源:
+
+⏺ Bash(kubectl get application root -n argocd -o jsonpath='{.status.resources}' | jq '.[] | select(.kind=="ApplicationSet")' )
+  ⎿  {
+       "kind": "ApplicationSet",
+       "name": "apps-appset",
+     … +19 lines (ctrl+o to expand)
+
+⏺ Bash(cd /Users/zoe/Documents/github/detectviz-gitops/argocd/appsets && kubectl kustomize . 2>&1 | grep -A 5 "kind: ApplicationSet" | head -20)
+  ⎿  kind: ApplicationSet
+     metadata:
+       annotations:
+     … +17 lines (ctrl+o to expand)
+
+⏺ 很好!apps-appset ApplicationSet 存在於 root application 的資源列表中,狀態是 Unknown。這表示它應該被創建,但可能還沒有被同步到集群。
+
+  讓我手動同步 apps-appset:
+
+⏺ Bash(kubectl get applicationset apps-appset -n argocd 2>&1)
+  ⎿  Error: Exit code 1
+     Error from server (NotFound): applicationsets.argoproj.io "apps-appset" not found
+
+⏺ Bash(kubectl apply -f apps-appset.yaml)
+  ⎿  Error: Exit code 1
+     error: error validating "apps-appset.yaml": error validating data: apiVersion not set; if you choose to ignore these errors, turn validation off with
+     --validate=false
+
+⏺ Bash(sleep 10 && kubectl get applicationset -n argocd)
+  ⎿  NAME               AGE
+     argocd-bootstrap   7h46m
+     detectviz-gitops   7h46m
+
+✳ Effecting… (esc to interrupt · 8m 24s · ↓ 5.7k tokens)
+  ⎿  Tip: Press Shift+Enter to send a multi-line message

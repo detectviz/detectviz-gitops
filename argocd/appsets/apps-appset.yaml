@@ -1,6 +1,7 @@
 # ApplicationSet for P5 applications
 # 使用 Git Generator 偵測 argocd/apps/observability/* 和 argocd/apps/identity/*。
 # syncPolicy 必須是 syncPolicy: {} (手動)，以建立 Vault 初始化的「手動閘門」。
+apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
   name: apps-appset
