@@ -128,6 +128,15 @@
 - **解決方案**: ✅ 改用 Storage Capacity Tracking 模式（Kubernetes 1.21+ 原生）
 - **驗證**: `argocd/apps/infrastructure/topolvm/overlays/values.yaml` 已啟用 `storageCapacityTracking`
 
+### 問題 #5: Vault Pod Anti-Affinity 與單 Worker Node
+- **症狀**: vault-1/vault-2 pods 持續 Pending，錯誤 "didn't match pod anti-affinity rules"
+- **根本原因**: Vault Helm chart 默認使用 `requiredDuringSchedulingIgnoredDuringExecution` anti-affinity，要求每個 pod 在不同 node 上，但測試環境只有 1 個 worker node
+- **解決方案**: ✅ 改用 `preferredDuringSchedulingIgnoredDuringExecution` (weight: 100)
+  - 允許多個 Vault pods 在同一 node 上運行（測試環境）
+  - 當有多個 worker nodes 時仍會嘗試分散（生產環境）
+- **驗證**: `argocd/apps/infrastructure/vault/overlays/values.yaml` 已添加 `server.affinity` 配置
+- **生產建議**: 多 worker node 環境可考慮改回 `required` 以提高可用性
+
 **部署建議**:
 - ⚠️ **cluster-bootstrap 顯示 OutOfSync 是正常的**，在基礎設施同步前會持續此狀態
 - ✅ **所有配置文件已修正**，無需手動調整
@@ -958,9 +967,14 @@ sleep 30 && kubectl get applications -n argocd
 
 ```bash
 kubectl get pods -n vault --watch
-# 等待 vault-0, vault-1, vault-2 都處於 Running 狀態
+# 等待所有 vault-0/1/2 都處於 Running 狀態 (0/1 Ready 是正常的,因為尚未 unseal)
 # Ctrl+C 退出 watch
 ```
+
+**注意**:
+- 所有 3 個 Vault pods 都會進入 Running 狀態，但顯示 0/1 Ready (因為未 unseal)
+- 如果 vault-1/vault-2 持續 Pending，檢查是否遇到 Anti-Affinity 問題（參見[問題 #5](#問題-5-vault-pod-anti-affinity-與單-worker-node)）
+- 配置已修正為 `preferredDuringScheduling`，允許單 worker node 環境運行
 
 #### 5.2 初始化 Vault
 
@@ -992,27 +1006,62 @@ kubectl exec -n vault vault-0 -c vault -- vault operator unseal $UNSEAL_KEY_1
 kubectl exec -n vault vault-0 -c vault -- vault operator unseal $UNSEAL_KEY_2
 kubectl exec -n vault vault-0 -c vault -- vault operator unseal $UNSEAL_KEY_3
 
-# 解封 vault-1
-kubectl exec -n vault vault-1 -c vault -- vault operator unseal $UNSEAL_KEY_1
-kubectl exec -n vault vault-1 -c vault -- vault operator unseal $UNSEAL_KEY_2
-kubectl exec -n vault vault-1 -c vault -- vault operator unseal $UNSEAL_KEY_3
+# 驗證狀態
+kubectl exec -n vault vault-0 -- vault status
 
-# 解封 vault-2
-kubectl exec -n vault vault-2 -c vault -- vault operator unseal $UNSEAL_KEY_1
-kubectl exec -n vault vault-2 -c vault -- vault operator unseal $UNSEAL_KEY_2
-kubectl exec -n vault vault-2 -c vault -- vault operator unseal $UNSEAL_KEY_3
+# 預期輸出:
+# Sealed: false  ✅
+# Initialized: true ✅
 ```
+
+# 解封 vault-1 (會自動加入 Raft cluster)
+kubectl exec -n vault vault-1 -- vault operator unseal $UNSEAL_KEY_1
+kubectl exec -n vault vault-1 -- vault operator unseal $UNSEAL_KEY_2
+kubectl exec -n vault vault-1 -- vault operator unseal $UNSEAL_KEY_3
+
+# 解封 vault-2 (會自動加入 Raft cluster)
+kubectl exec -n vault vault-2 -- vault operator unseal $UNSEAL_KEY_1
+kubectl exec -n vault vault-2 -- vault operator unseal $UNSEAL_KEY_2
+kubectl exec -n vault vault-2 -- vault operator unseal $UNSEAL_KEY_3
+```
+
+**注意**:
+- vault-1 和 vault-2 在 unseal 後會自動加入 vault-0 的 Raft cluster
+- 第三次 unseal 命令後可能仍顯示 `Sealed: true`，但日誌會顯示 "vault is unsealed"
+- 這是正常行為，Vault 正在加入 Raft cluster 並同步狀態
+- 稍等片刻後檢查 pod 狀態，應該會變成 1/1 Ready
 
 #### 5.4 驗證 Vault 狀態
 
 ```bash
+# 檢查所有 Vault pods 狀態
+kubectl get pods -n vault -l app.kubernetes.io/name=vault,component=server
+
 # 檢查所有 Vault 實例
-kubectl exec -n vault vault-0 -c vault -- vault status
-kubectl exec -n vault vault-1 -c vault -- vault status
-kubectl exec -n vault vault-2 -c vault -- vault status
+kubectl exec -n vault vault-0 -- vault status
+kubectl exec -n vault vault-1 -- vault status
+kubectl exec -n vault vault-2 -- vault status
 ```
 
-**預期結果**: 所有實例顯示 `Sealed: false`
+**預期結果**:
+- 所有 pods 顯示 `1/1 Running`
+- vault-0: `Sealed: false`, `HA Mode: active`
+- vault-1: `Sealed: false`, `HA Mode: standby`
+- vault-2: `Sealed: false`, `HA Mode: standby`
+- 所有實例都在同一個 Raft cluster 中 (相同 `Cluster ID`)
+
+**如果 vault pods 在 unseal 後仍然 0/1**:
+```bash
+# 檢查日誌
+kubectl logs vault-1 -n vault --tail=50
+# 應該看到 "vault is unsealed" 和 "entering standby mode"
+
+# 強制刪除並重建 pods (會保留 PVC 資料)
+kubectl delete pod vault-0 vault-1 vault-2 -n vault
+
+# 等待 pods 重新創建後再次 unseal
+# (重啟後 Vault 會重新進入 sealed 狀態)
+```
 
 ---
 
