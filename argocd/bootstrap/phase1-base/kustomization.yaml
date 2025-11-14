@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  # 基礎命名空間 (不依賴任何 CRDs)
+  - namespaces.yaml
+
+# 通用標籤
+labels:
+  - pairs:
+      app.kubernetes.io/managed-by: kustomize
+      bootstrap.phase: "1-base"
+
+# Sync Wave: -10 (最先部署)
+commonAnnotations:
+  argocd.argoproj.io/sync-wave: "-10"

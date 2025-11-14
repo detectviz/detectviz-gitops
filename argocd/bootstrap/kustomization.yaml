@@ -5,14 +5,16 @@ resources:
   # ArgoCD 專案配置 (單獨管理)
   - argocd-projects.yaml
 
-  # 集群級別資源
-  - cluster-resources/
+  # Phase 1: 基礎資源 (不依賴任何 CRDs)
+  # Sync Wave: -10
+  - phase1-base/
+
+  # Phase 2: 進階資源 (依賴基礎設施)
+  # Sync Wave: 10
+  # 注意: 只有在基礎設施 ApplicationSets 部署 cert-manager, ingress-nginx 等之後才會成功
+  - phase2-advanced/
 
 # 通用標籤
 labels:
   - pairs:
       app.kubernetes.io/managed-by: kustomize
-
-# 通用 annotations
-commonAnnotations:
-  argocd.argoproj.io/sync-wave: "-9"
