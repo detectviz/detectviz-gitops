@@ -207,6 +207,8 @@ spec:
     - group: networking.k8s.io
       kind: Ingress
     - group: networking.k8s.io
+      kind: IngressClass
+    - group: networking.k8s.io
       kind: NetworkPolicy
 
     # 自動擴展資源
