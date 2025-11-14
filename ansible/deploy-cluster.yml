@@ -200,7 +200,7 @@
 
     # 如果 SSH 金鑰存在,配置 ArgoCD repository 認證
     - name: "Configure ArgoCD Git Repository authentication (配置 ArgoCD Git Repository 認證)"
-      when: ssh_key_stat.stat.exists
+      when: ssh_key_stat is defined and ssh_key_stat.stat.exists
       block:
         # 複製 SSH 私鑰到臨時位置
         - name: "Copy SSH private key to remote host (複製 SSH 私鑰到遠端主機)"
@@ -308,7 +308,7 @@
 
           3. 重新執行部署或手動配置認證:
              參考文件: ansible/ARGOCD_GIT_REPOSITORY_SETUP.md
-      when: not ssh_key_stat.stat.exists
+      when: ssh_key_stat is defined and not ssh_key_stat.stat.exists
 
     # 部署 ArgoCD Root Application (App of Apps 模式)
     # 這個應用會自動管理其他所有基礎設施應用 (Grafana, Loki, Mimir, etc.)
@@ -336,7 +336,7 @@
         --type=merge
       become: true
       changed_when: true
-      when: ssh_key_stat.stat.exists
+      when: ssh_key_stat is defined and ssh_key_stat.stat.exists
 
     # 等待 root application 同步
     - name: "Wait for root application to sync (等待 root application 同步)"
