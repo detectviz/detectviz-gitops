@@ -1,5 +1,8 @@
 # MetalLB IP Address Pool Configuration
-# 必須修改為安全的 IP 範圍 (例如 192.168.0.200-192.168.0.220)，以避免與本機 (.101) 和 IPMI (.104) 衝突。
+# 包含兩個範圍:
+# - 192.168.0.10: 保留給 Ingress Controller 的 VIP
+# - 192.168.0.200-192.168.0.220: 動態分配的 IP 範圍
+# 避免與本機 (.101) 和 IPMI (.104) 衝突
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
 metadata:
@@ -7,4 +10,5 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-    - 192.168.0.200-192.168.0.220
+    - 192.168.0.10/32  # Ingress Controller VIP
+    - 192.168.0.200-192.168.0.220  # 動態 IP 池
