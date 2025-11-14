@@ -10,7 +10,7 @@
 **/secrets.yaml
 **/secret.yaml
 !bootstrap/secrets/  # 允許 sealed-secrets 目錄
-
+vault-keys.json
 # IDE
 .vscode/
 .idea/

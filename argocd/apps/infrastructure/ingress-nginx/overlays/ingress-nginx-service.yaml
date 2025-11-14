@@ -7,14 +7,15 @@ metadata:
   name: ingress-nginx-controller
   namespace: ingress-nginx
   annotations:
-    # MetalLB IP pool assignment
-    metallb.universe.tf/address-pool: default
-    # Fixed LoadBalancer IP (VIP) - using annotation instead of spec.loadBalancerIP (deprecated)
-    metallb.universe.tf/loadBalancerIPs: 192.168.0.10
+    # MetalLB IP pool assignment - 移除以允許 MetalLB 自動分配
+    # metallb.universe.tf/address-pool: default
+    # Fixed LoadBalancer IP (VIP) - 移除以避免 MetalLB 相容性問題
+    # metallb.universe.tf/loadBalancerIPs: 192.168.0.10
 spec:
   type: LoadBalancer
-  # Removed deprecated loadBalancerIP field - using annotation instead
-  externalTrafficPolicy: Local
+  # 改用 Cluster 模式以避免 Local 模式的健康檢查問題
+  # Local 模式在 MetalLB 環境下會因為 healthCheckNodePort 失敗導致 IP 被撤回
+  externalTrafficPolicy: Cluster
   ports:
     - name: http
       port: 80

@@ -15,8 +15,10 @@ ingress-nginx:
     service:
       enabled: true
       type: LoadBalancer
-      # MetalLB 會透過 annotations 分配 192.168.0.10
-      # 實際配置在 overlays/ingress-nginx-service.yaml
+      # 使用 Cluster 模式避免 Local 模式的健康檢查問題
+      externalTrafficPolicy: Cluster
+      # MetalLB 會從 IP 池自動分配第一個可用 IP (192.168.0.10)
+      # 不使用註解指定 IP 以避免相容性問題
 
     # 禁用 hostPort 模式
     hostPort:

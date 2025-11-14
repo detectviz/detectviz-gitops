@@ -17,7 +17,7 @@ helmCharts:
 
 patchesStrategicMerge:
   - ingress-nginx-controller-tolerations.yaml
-  - ingress-nginx-service.yaml
+  # ingress-nginx-service.yaml - 移除,改用 values.yaml 中的配置
 
 commonLabels:
   app.kubernetes.io/part-of: detectviz-infrastructure
