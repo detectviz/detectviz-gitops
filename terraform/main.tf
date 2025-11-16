@@ -37,7 +37,6 @@ resource "proxmox_virtual_environment_vm" "k8s_masters" {
   node_name   = var.proxmox_target_node
   vm_id       = 111 + count.index
   bios        = "ovmf" # 啟用 UEFI 模式，以支援新版 Ubuntu 與 Cloud-init
-
   # VM 範本複製設定
   clone {
     vm_id = var.vm_template_id
@@ -145,7 +144,6 @@ resource "proxmox_virtual_environment_vm" "k8s_workers" {
   node_name   = var.proxmox_target_node
   vm_id       = 114
   bios        = "ovmf"
-
   # VM 範本複製設定
   clone {
     vm_id = var.vm_template_id

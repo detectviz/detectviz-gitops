@@ -44,11 +44,11 @@ distributor:
 
 ingester:
   replicas: 2
-  # **[關鍵]** 為 ingester 啟用持久化儲存，並使用 'detectviz-sata' StorageClass。
+  # **[關鍵]** 為 ingester 啟用持久化儲存，使用 local-path (master 節點)。
   # ingester 使用 WAL (Write Ahead Log) 來防止數據丟失。
   persistence:
     enabled: true
-    storageClass: "detectviz-sata"
+    storageClass: "local-path"
     size: 20Gi
 
 querier:
@@ -70,7 +70,7 @@ compactor:
   # **[關鍵]** Compactor 也需要持久化儲存來完成其工作。
   persistence:
     enabled: true
-    storageClass: "detectviz-sata"
+    storageClass: "local-path"
     size: 10Gi
 
 # --- 可觀測性 (Observability) ---

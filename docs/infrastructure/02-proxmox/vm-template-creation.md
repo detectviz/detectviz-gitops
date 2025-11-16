@@ -20,69 +20,73 @@ qm create 9000 --name ubuntu-2204-template --memory 2048 --cores 2 \
   --net0 virtio,bridge=vmbr0 \
   --bios ovmf
 
-# 3. 新增 EFI 磁碟（UEFI 必需）
+# 3. 將機器類型設為 q35
+qm set 9000 --machine q35
+
+# 4. 新增 EFI 磁碟（UEFI 必需）
 qm set 9000 --efidisk0 nvme-vm:0,efitype=4m,pre-enrolled-keys=0
 
-# 4. 匯入 Cloud Image 磁碟到儲存池（使用 nvme-vm，與 Terraform 一致）
+# 5. 匯入 Cloud Image 磁碟到儲存池（使用 nvme-vm，與 Terraform 一致）
 qm importdisk 9000 jammy-server-cloudimg-amd64.img nvme-vm
 
-# 5. 設定磁碟與開機順序
+# 6. 設定磁碟與開機順序
 qm set 9000 --scsihw virtio-scsi-pci --scsi0 nvme-vm:vm-9000-disk-0
 qm set 9000 --boot order=scsi0
 
-# 6. 調整磁碟大小並啟用 discard（重要：讓 clone 的 VM 能調整大小）
+# 7. 調整磁碟大小並啟用 discard（重要：讓 clone 的 VM 能調整大小）
 qm disk resize 9000 scsi0 10G
 qm set 9000 --scsi0 nvme-vm:vm-9000-disk-0,discard=on
 
-# 7. 新增 Cloud-init 裝置（使用 local storage 存放 snippets）
+# 8. 新增 Cloud-init 裝置（使用 local storage 存放 snippets）
 qm set 9000 --ide2 local:cloudinit
 
-# 8. 啟用序列主控台（Terraform 與 Cloud-init 監控需要）
+# 9. 啟用序列主控台（Terraform 與 Cloud-init 監控需要）
 qm set 9000 --serial0 socket --vga serial0
 
-# 9. 啟用 QEMU Guest Agent（必須，Terraform 需要此功能）
+# 10. 啟用 QEMU Guest Agent（必須，Terraform 需要此功能）
 qm set 9000 --agent enabled=1
 
-# 10. 設定 cloud-init 預設登入帳號與 SSH 金鑰
+# 11. 設定 cloud-init 預設登入帳號與 SSH 金鑰
 # 確保此金鑰與 Terraform 設定中使用的 key 完全一致
 # 確保 --ciuser 與 Terraform 變數 vm_user 一致，例如 "ubuntu"
+# 密碼設定 --cipassword ubuntu 
 qm set 9000 --ciuser ubuntu --sshkeys ~/.ssh/id_rsa.pub
 ```
 
 ### 第二階段：安裝 QEMU Guest Agent（必須）
 ```bash
-# 11. 啟動 VM 進行軟體安裝
+# 12. 啟動 VM 進行軟體安裝
 qm start 9000
 
-# 12. 等待 VM 啟動完成（約 30-60 秒）
+# 13. 等待 VM 啟動完成（約 30-60 秒）
 # 透過 Proxmox Web Console 或 SSH 連線到 VM
 
-# 13. 安裝 QEMU Guest Agent
+# 14. 安裝 QEMU Guest Agent
 sudo apt update
 sudo apt install -y cloud-init
 sudo apt install -y qemu-guest-agent
 
-# 14. 啟用並啟動 QEMU Guest Agent 服務
+# 15. 啟用並啟動 QEMU Guest Agent 服務
 sudo systemctl enable qemu-guest-agent
 sudo systemctl start qemu-guest-agent
 
-# 15. 驗證 Agent 運行狀態
+# 16. 驗證 Agent 運行狀態
 sudo systemctl status qemu-guest-agent
 
-# 16. 清理系統（可選但建議）
+# 17. 清理系統（可選但建議）
 sudo apt clean
 sudo cloud-init clean --logs --seed
 
-# 17. 關閉 VM
+# 18. 關閉 VM
 sudo shutdown -h now
 ```
 
 ### 第三階段：轉換為模板
 ```bash
-# 18. 等待 VM 完全關閉後，轉為模板
+# 19. 等待 VM 完全關閉後，轉為模板
 qm template 9000
 
-# 19. 驗證模板已建立
+# 20. 驗證模板已建立
 pvesh get /cluster/resources --type vm | grep ubuntu-2204-template
 ```
 

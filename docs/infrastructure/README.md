@@ -1,146 +1,57 @@
-# DetectViz 基礎設施文檔
+# DetectViz Infrastructure Documentation
 
-## 概述
+本目錄包含 DetectViz 平台基礎設施的詳細文檔。
 
-本目錄包含 DetectViz 平臺的完整基礎設施設置文檔，按照功能模塊進行組織，便於查找和維護。
+## 📁 目錄結構
 
-## 目錄結構
+### 04-ansible/
+Ansible 自動化部署相關文檔
 
-```
-docs/infrastructure/
-├── README.md                 # 本文件
-├── proxmox/                  # Proxmox VE 虛擬化平台
-│   ├── installation.md       # Proxmox 安裝與模板製作
-│   ├── configuration.md      # Proxmox 配置與認證設置
-│   └── vm-management.md      # VM 管理最佳實踐
-├── hardware/                 # 硬體管理 (KVM/IPMI)
-│   ├── ipmi-setup.md         # IPMI/KVM 管理設置
-│   ├── bios-config.md        # BIOS 和硬體配置
-│   └── hardware-specs.md     # 硬體規格說明
-├── networking/               # 網路配置
-│   ├── network-info.md       # 網路配置指南
-│   ├── dns-setup.md          # DNS 伺服器設置
-│   ├── network-optimization.md # 網路優化 (rp_filter等)
-│   └── domain-mapping.md     # 域名映射參考
-└── storage/                  # 儲存配置
-    ├── storage-architecture.md # 儲存架構設計
-    └── storage-setup.md      # 儲存設置指南
-```
+- **configuration/** - 配置和設定文檔
+- **troubleshooting/** - 故障排除和修復文檔
 
-## 職責劃分
+### 05-argocd/
+ArgoCD GitOps 平台相關文檔
 
-### 基礎設施即代碼 (`iac/`)
-涵蓋基礎設施自動化部署和管理：
-- **Terraform 規格**：平台標準化配置和最佳實踐
-- **Provider 配置**：Proxmox API 認證和權限管理
-- **狀態管理**：安全和版本控制實踐
-- **程式碼組織**：模組化設計和維護
+- **deployment/** - 部署指南
+  - quick-start.md - 快速開始指南
+- **troubleshooting/** - 故障排除
+  - argocd-config-fixes.md - ArgoCD 配置修復摘要
+  - git-repository-setup.md - Git Repository SSH 認證設定與自動化
+  - ingress-loadbalancer-fix.md - Ingress-Nginx LoadBalancer 配置修復
 
-### Proxmox 虛擬化平台 (`proxmox/`)
-專注於 Proxmox VE 的安裝、配置和虛擬機管理：
-- **安裝和初始化**
-- **系統配置和優化**
-- **VM 創建和管理**
-- **QEMU Guest Agent 設置**
+### 06-kubernetes/
+Kubernetes 集群相關文檔
 
-### 硬體管理 (`hardware/`)
-處理底層硬體和 IPMI 管理：
-- **IPMI/KVM 遠端管理**
-- **BIOS 設置和硬體初始化**
-- **硬體規格和維護**
-- **電源和冷卻管理**
+- **deployment/** - 部署文檔
+  - vault-deployment.md - Vault HA 部署成功報告
+- **monitoring/** - 監控相關
+  - cluster-health-check.md - 集群健康檢查
+- **troubleshooting/** - 故障排除
+  - storage-topolvm-fixes.md - TopoLVM 調度與容量追蹤問題修復
 
-### 網路配置 (`networking/`)
-涵蓋所有網路相關設置：
-- **Bridge 網路配置**
-- **DNS 伺服器和域名解析**
-- **網路性能優化**
-- **域名映射和服務發現**
+## 🔗 相關文檔
 
-### 儲存配置 (`storage/`)
-管理儲存架構和設置：
-- **混合儲存架構設計**
-- **LVM 和檔案系統配置**
-- **效能優化和容量規劃**
-- **備份策略**
+- **項目根目錄**
+  - [deploy.md](../../deploy.md) - 完整部署手冊
+  - [deploy-app.md](../../deploy-app.md) - 應用部署指南
+  - [README.md](../../README.md) - 項目總覽
 
-## 部署順序
+- **應用指南**
+  - [docs/app-guide/](../app-guide/) - 各應用的規格與最佳實踐
 
-### 1. 硬體準備階段
-1. [硬體規格確認](hardware/hardware-specs.md)
-2. [BIOS 配置](hardware/bios-config.md)
-3. [IPMI 設置](hardware/ipmi-setup.md)
+- **部署日誌**
+  - [docs/deployment-logs/](../deployment-logs/) - 歷史部署記錄
 
-### 2. Proxmox 安裝階段
-1. [Proxmox 安裝](proxmox/installation.md)
-2. [Proxmox 配置](proxmox/configuration.md)
-
-### 3. 基礎設施配置階段
-1. [網路設置](networking/network-info.md)
-2. [DNS 配置](networking/dns-setup.md)
-3. [儲存設置](storage/storage-setup.md)
-
-### 4. VM 部署階段
-1. [VM 管理](proxmox/vm-management.md)
-2. Terraform 自動化部署
-
-## 關鍵配置參考
-
-### IP 分配
-| 組件 | IP 位址 | 說明 |
-|------|---------|------|
-| Proxmox | 192.168.0.2 | 虛擬化平台 |
-| IPMI | 192.168.0.4 | 硬體管理 |
-| K8s VIP | 192.168.0.10 | 集群 API |
-| Master 節點 | 192.168.0.11-13 | 控制平面 |
-| Worker 節點 | 192.168.0.14 | 應用運行 |
-
-### 域名映射
-| 服務 | 域名 | IP 位址 |
-|------|------|---------|
-| Proxmox | proxmox.detectviz.internal | 192.168.0.2 |
-| Kubernetes API | k8s-api.detectviz.internal | 192.168.0.10 |
-| ArgoCD | argocd.detectviz.internal| 192.168.0.10 |
-
-### 儲存架構
-| 層級 | 設備 | 容量 | 用途 |
-|------|------|------|------|
-| 系統層 | SATA SSD | 512GB | Proxmox 系統 |
-| 高效層 | NVMe SSD | 2TB | VM 和應用資料 |
-| 備份層 | SATA 分區 | 200GB+ | 備份儲存 |
-
-## 維護和更新
-
-### 定期檢查
-- 硬體健康狀態
-- 網路連線和 DNS 解析
-- 儲存使用率和性能
-- 備份完整性
-
-### 配置變更
-1. 更新相關文檔
-2. 測試配置變更
-3. 更新 DNS 和網路配置
-4. 驗證服務可用性
-
-## 故障排除
-
-### 快速診斷檢查表
-- [ ] 硬體電源和連線正常
-- [ ] IPMI 遠端管理可訪問
-- [ ] Proxmox Web UI 可訪問
-- [ ] 網路橋接配置正確
-- [ ] DNS 解析正常
-- [ ] 儲存空間充足
+## 🔧 快速鏈接
 
 ### 常見問題
-- 網路連線問題：檢查 [網路優化指南](networking/network-optimization.md)
-- 儲存性能問題：參考 [儲存架構設計](storage/storage-architecture.md)
-- VM 管理問題：查看 [VM 管理指南](proxmox/vm-management.md)
+- [ArgoCD 無法同步 Git Repository](05-argocd/troubleshooting/git-repository-setup.md)
+- [Ingress LoadBalancer 無法分配 IP](05-argocd/troubleshooting/ingress-loadbalancer-fix.md)
+- [TopoLVM Pods 調度失敗](06-kubernetes/troubleshooting/storage-topolvm-fixes.md)
+- [Vault 部署和初始化](06-kubernetes/deployment/vault-deployment.md)
 
-## 相關項目
+---
 
-- [Terraform 配置](../../terraform/) - 基礎設施即代碼
-- [Ansible 配置](../../ansible/) - 自動化部署
-- [ArgoCD 配置](../../argocd/) - GitOps 應用交付
-- [主 README](../../README.md) - 總體項目說明
+**文檔版本**: 1.0  
+**最後更新**: 2025-11-14

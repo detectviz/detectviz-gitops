@@ -72,7 +72,7 @@ pgpool:
   # Pgpool 也需要持久化儲存來保存其配置和日誌。
   persistence:
     enabled: true
-    storageClass: detectviz-nvme
+    storageClass: topolvm-provisioner  # app-worker 節點 TopoLVM
     size: 1Gi
 
   # **[關鍵]** 從名為 'detectviz-pgpool-users' 的 Secret 中讀取使用者密碼檔案 (pgpool_passwd)。
@@ -101,7 +101,7 @@ postgresql:
   # **[關鍵]** 為 PostgreSQL 啟用持久化儲存。
   persistence:
     enabled: true
-    storageClass: detectviz-nvme # 使用 NVMe SSD 以確保資料庫的高 I/O 性能。
+    storageClass: topolvm-provisioner  # app-worker 節點 TopoLVM (data-vg SSD)
     size: 10Gi
 
   # **[關鍵]** 從名為 'detectviz-postgresql-initdb' 的 Secret 中讀取初始化 SQL 腳本。
@@ -116,7 +116,7 @@ metrics:
   # 參考: guide/postgresql.md#1.1-PostgreSQL
   serviceMonitor:
     enabled: true
-    namespace: detectviz # 指定 ServiceMonitor 應被創建在哪個命名空間。
+    namespace: monitoring # 指定 ServiceMonitor 應被創建在哪個命名空間。
     interval: 30s
     # 添加額外的標籤，以便 Prometheus 和 Grafana 進行篩選。
     additionalLabels:

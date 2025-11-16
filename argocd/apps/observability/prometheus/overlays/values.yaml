@@ -80,8 +80,8 @@ alertmanager:
     storage:
       volumeClaimTemplate:
         spec:
-          # **[優化]** 使用 'detectviz-sata' 進行持久化儲存，適用於告警狀態這種 I/O 需求不高的場景。
-          storageClassName: detectviz-sata
+          # 使用 local-path (master 節點本地儲存)
+          storageClassName: local-path
           accessModes: ["ReadWriteOnce"]
           resources:
             requests:
@@ -118,7 +118,7 @@ prometheus:
     # **[關鍵]** 設定 remoteWrite，將所有抓取到的指標實時轉發到 Mimir 進行長期儲存。
     # 參考: guide/prometheus.md#1.3-與-Grafana-Mimir-的整合
     remoteWrite:
-      - url: http://mimir-nginx.monitoring.svc.cluster.local/api/v1/push
+      - url: http://mimir-distributor.monitoring.svc.cluster.local:8080/api/v1/push
         remoteTimeout: 30s
         queueConfig:
           capacity: 20000
@@ -129,8 +129,8 @@ prometheus:
     storageSpec:
       volumeClaimTemplate:
         spec:
-          # **[優化]** 使用 'detectviz-sata'，因為大部分查詢負載將由 Mimir 承擔，本地儲存的 I/O 需求相對較低。
-          storageClassName: detectviz-sata
+          # 使用 local-path (master 節點本地儲存)，大部分查詢負載由 Mimir 承擔
+          storageClassName: local-path
           accessModes: ["ReadWriteOnce"]
           resources:
             requests:

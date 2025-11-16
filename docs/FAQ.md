@@ -4,6 +4,7 @@
 
 ## 目錄
 
+- [雞生蛋問題](#雞生蛋問題)
 - [ArgoCD 相關問題](#argocd-相關問題)
 - [TopoLVM 存儲問題](#topolvm-存儲問題)
 - [網路與 DNS 問題](#網路與-dns-問題)
@@ -11,6 +12,74 @@
 - [Vault 相關問題](#vault-相關問題)
 
 ---
+
+
+## 雞生蛋問題
+
+本部署流程已完整解決以下循環依賴問題（詳見[故障排除](#故障排除)章節）：
+
+### 問題 #1: ApplicationSet 路徑配置
+- **症狀**: ArgoCD 無法找到應用路徑
+- **解決方案**: ✅ 所有 ApplicationSet 路徑已包含 `argocd/` 前綴
+- **驗證**: `argocd/appsets/appset.yaml` 已修正
+
+### 問題 #2: AppProject 權限白名單
+- **症狀**: 基礎設施應用無法創建 Namespace 或 IngressClass
+- **解決方案**: ✅ `platform-bootstrap` 項目已包含所有必要資源權限
+- **驗證**: `argocd/bootstrap/argocd-projects.yaml` 已配置完整
+
+### 問題 #3: CRD 依賴順序
+- **症狀**: cluster-bootstrap 嘗試創建 Certificate 但 cert-manager CRD 尚未安裝
+- **解決方案**: ✅ 使用 Sync Wave 分階段部署 + `SkipDryRunOnMissingResource=true`
+- **預期行為**: cluster-bootstrap Phase 2 會先失敗，待基礎設施同步後自動重試成功
+- **驗證**: 基礎設施同步後 cluster-bootstrap 自動變為 Synced
+
+### 問題 #4: TopoLVM 調度模式
+- **症狀**: Vault pods 顯示 "Insufficient capacity" 但實際有足夠空間
+- **根本原因**: Scheduler Extender 模式未完整配置
+- **解決方案**: ✅ 改用 Storage Capacity Tracking 模式（Kubernetes 1.21+ 原生）
+- **驗證**: `argocd/apps/infrastructure/topolvm/overlays/values.yaml` 已啟用 `storageCapacityTracking`
+
+### 問題 #5: Vault Pod Anti-Affinity 與單 Worker Node
+- **症狀**: vault-1/vault-2 pods 持續 Pending，錯誤 "didn't match pod anti-affinity rules"
+- **根本原因**: Vault Helm chart 默認使用 `requiredDuringSchedulingIgnoredDuringExecution` anti-affinity，要求每個 pod 在不同 node 上，但測試環境只有 1 個 worker node
+- **解決方案**: ✅ 改用 `preferredDuringSchedulingIgnoredDuringExecution` (weight: 100)
+  - 允許多個 Vault pods 在同一 node 上運行（測試環境）
+  - 當有多個 worker nodes 時仍會嘗試分散（生產環境）
+- **驗證**: `argocd/apps/infrastructure/vault/overlays/values.yaml` 已添加 `server.affinity` 配置
+- **生產建議**: 多 worker node 環境可考慮改回 `required` 以提高可用性
+
+### 問題 #6: ArgoCD Server URL 配置未生效
+- **症狀**: ArgoCD UI 無法正確顯示 `https://argocd.detectviz.internal` URL,影響 SSO 回調和狀態徽章
+- **根本原因**: ArgoCD 由 Ansible 通過 Helm chart 安裝,`argocd-cm.yaml` 配置從未被應用到實際運行的 ConfigMap
+- **解決方案**: ✅ 啟用 ArgoCD 自我管理配置
+  - 添加 ArgoCD 到 ApplicationSet (`argocd/appsets/appset.yaml`)
+  - 創建 config-only 管理模式（不重新部署 ArgoCD 本身）
+  - 只管理配置文件 (`argocd-cm.yaml`)，避免與 Ansible 安裝衝突
+- **臨時修復**: 已手動 patch ConfigMap: `kubectl patch configmap argocd-cm -n argocd --type merge -p '{"data":{"url":"https://argocd.detectviz.internal"}}'`
+- **驗證**: `argocd/apps/infrastructure/argocd/overlays/kustomization.yaml` 已改為 config-only 模式
+- **影響**: 未來配置變更可通過 GitOps 管理,無需手動操作
+
+### 問題 #7: Ingress-Nginx LoadBalancer 無法分配 IP
+- **症狀**: ingress-nginx-controller 服務 EXTERNAL-IP 為 `<pending>`，無法訪問 https://argocd.detectviz.internal
+- **根本原因**:
+  1. MetalLB IP 池配置不完整（缺少 192.168.0.10）
+  2. 使用 deprecated `spec.loadBalancerIP` 欄位與註解衝突
+  3. `externalTrafficPolicy: Local` 導致健康檢查失敗，IP 被撤回
+- **解決方案**: ✅ 完整修復配置
+  - 添加 `192.168.0.10/32` 到 MetalLB IPAddressPool
+  - 移除 deprecated `spec.loadBalancerIP` 欄位
+  - 使用 `externalTrafficPolicy: Cluster` 模式
+  - 通過 strategic merge patch 正確配置服務
+- **驗證**: EXTERNAL-IP 成功分配為 192.168.0.10，HTTPS 正常訪問
+- **相關文件**: `ingress-nginx-loadbalancer-fix.md`
+- **Commits**: bbab4f2, 16bb52d, 8bafac7, 959332d
+
+**部署建議**:
+- ⚠️ **cluster-bootstrap 顯示 OutOfSync 是正常的**，在基礎設施同步前會持續此狀態
+- ✅ **所有配置文件已修正**，無需手動調整
+- 📋 **遵循本文件步驟**，問題會自動解決
+
 
 ## ArgoCD 相關問題
 

@@ -3,6 +3,7 @@ kind: Kustomization
 
 resources:
   - ../base
+  - externalsecret.yaml
 
 patchesStrategicMerge:
   - patch-nodeselector-storage.yaml

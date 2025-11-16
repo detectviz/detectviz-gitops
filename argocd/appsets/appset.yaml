@@ -24,6 +24,8 @@ spec:
             path: argocd/apps/infrastructure/ingress-nginx/overlays
           - appName: topolvm
             path: argocd/apps/infrastructure/topolvm/overlays
+          - appName: local-path-provisioner
+            path: argocd/apps/infrastructure/local-path-provisioner/overlays
           - appName: external-secrets-operator
             path: argocd/apps/infrastructure/external-secrets-operator/overlays
           - appName: vault
@@ -48,7 +50,7 @@ spec:
 
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{if eq .appName "cert-manager"}}cert-manager{{else if eq .appName "metallb"}}metallb-system{{else if eq .appName "ingress-nginx"}}ingress-nginx{{else if eq .appName "external-secrets-operator"}}external-secrets-system{{else if eq .appName "topolvm"}}kube-system{{else if eq .appName "vault"}}vault{{else if eq .appName "argocd"}}argocd{{else}}{{.appName}}{{end}}'
+        namespace: '{{if eq .appName "cert-manager"}}cert-manager{{else if eq .appName "metallb"}}metallb-system{{else if eq .appName "ingress-nginx"}}ingress-nginx{{else if eq .appName "external-secrets-operator"}}external-secrets-system{{else if eq .appName "topolvm"}}kube-system{{else if eq .appName "local-path-provisioner"}}kube-system{{else if eq .appName "vault"}}vault{{else if eq .appName "argocd"}}argocd{{else}}{{.appName}}{{end}}'
 
       syncPolicy:
         automated:

@@ -169,7 +169,7 @@ resources:
 persistence:
   enabled: true
   type: pvc
-  storageClassName: detectviz-nvme # 使用 NVMe SSD 以獲得更好的性能。
+  storageClassName: topolvm-provisioner  # app-worker 節點 TopoLVM (data-vg SSD)
   accessModes:
     - ReadWriteOnce
   size: 10Gi
@@ -191,7 +191,7 @@ admin:
 # 參考: guide/grafana.md#1.1-部署與架構
 database:
   type: postgres
-  host: postgresql-pgpool.detectviz.svc.cluster.local:5432 # 指向 PostgreSQL 的高可用連線池 (Pgpool)。
+  host: postgresql-pgpool.monitoring.svc.cluster.local:5432 # 指向 PostgreSQL 的高可用連線池 (Pgpool)。
   name: grafana
   user: grafana
   existingSecret: grafana-database # 從 Secret 中讀取資料庫密碼。
@@ -238,6 +238,12 @@ env:
   - name: GF_UNIFIED_ALERTING_HA_ADVERTISE_ADDRESS
     value: "$(POD_IP):9094"
   - name: GF_UNIFIED_ALERTING_HA_PEERS
+  # **[Keycloak OAuth2]** 注入 Keycloak client secret
+  - name: KEYCLOAK_GRAFANA_CLIENT_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: grafana-keycloak-oauth
+        key: client-secret
     value: "grafana-alerting.monitoring.svc.cluster.local:9094" # 指向用於 Gossip 的 Headless Service。
 
 # 從 Secret 'grafana-database' 中注入所有鍵值對作為環境變數 (例如 GF_DATABASE_USER, GF_DATABASE_NAME)。
@@ -368,3 +374,66 @@ extraObjects:
           port: 9094
           targetPort: 9094
           protocol: UDP
+
+# --- OAuth2/Keycloak SSO 整合 (OAuth2/Keycloak SSO Integration) ---
+# **[關鍵]** 整合 Keycloak 提供統一身份認證，實現 Single Sign-On。
+# 參考: https://grafana.com/docs/grafana/latest/setup-grafana/configure-security/configure-authentication/generic-oauth/
+grafana.ini:
+  server:
+    protocol: http
+    http_port: 3000
+    enable_gzip: true
+    domain: grafana.detectviz.internal  # 使用統一的 .internal 域名
+    root_url: "%(protocol)s://%(domain)s/"
+
+  analytics:
+    reporting_enabled: false
+    check_for_updates: false
+
+  security:
+    admin_user: admin
+    cookie_secure: false  # production 使用 TLS 時改為 true
+    cookie_samesite: lax
+
+  users:
+    allow_sign_up: false
+    allow_org_create: false
+    auto_assign_org: true
+    auto_assign_org_role: Viewer
+
+  auth:
+    disable_login_form: false  # 保留本地登入選項作為後備
+
+  # **[關鍵]** 啟用 Generic OAuth2 整合 Keycloak。
+  auth.generic_oauth:
+    enabled: true
+    name: Keycloak
+    allow_sign_up: true
+    client_id: grafana
+    client_secret: ${KEYCLOAK_GRAFANA_CLIENT_SECRET}  # 從環境變數讀取
+    scopes: openid profile email roles
+    email_attribute_path: email
+    login_attribute_path: preferred_username
+    name_attribute_path: name
+    role_attribute_path: contains(roles[*], 'admin') && 'Admin' || contains(roles[*], 'editor') && 'Editor' || 'Viewer'
+    auth_url: https://keycloak.detectviz.internal/realms/detectviz/protocol/openid-connect/auth
+    token_url: https://keycloak.detectviz.internal/realms/detectviz/protocol/openid-connect/token
+    api_url: https://keycloak.detectviz.internal/realms/detectviz/protocol/openid-connect/userinfo
+    use_pkce: true
+    # 允許使用 email 作為使用者名稱
+    use_refresh_token: true
+    # 自動將 OAuth2 使用者同步到 Grafana
+    auto_login: false  # 設為 false 以保留手動選擇登入方式的選項
+
+  auth.anonymous:
+    enabled: false
+
+  log:
+    mode: console
+    level: info
+
+  paths:
+    data: /var/lib/grafana/data
+    logs: /var/log/grafana
+    plugins: /var/lib/grafana/plugins
+    provisioning: /etc/grafana/provisioning

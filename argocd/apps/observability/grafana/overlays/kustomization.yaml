@@ -4,6 +4,8 @@ kind: Kustomization
 resources:
   - ../base
   - externalsecret-db.yaml
+  - externalsecret-admin.yaml
+  - externalsecret-oauth.yaml
 
 patchesStrategicMerge:
   - patch-nodeselector.yaml

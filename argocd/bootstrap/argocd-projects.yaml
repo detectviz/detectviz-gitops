@@ -289,3 +289,56 @@ spec:
   # 簽名驗證 (未來啟用)
   # signatureKeys:
   #   - keyID: <GPG_KEY_ID>
+---
+# Observability Project - 管理 monitoring namespace 中的所有可觀測性組件
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform-observability
+  namespace: argocd
+spec:
+  description: "Detectviz Observability Stack (Grafana, Prometheus, Loki, Mimir, Tempo, PostgreSQL, Minio)"
+  
+  # 允許部署的命名空間
+  destinations:
+    - namespace: monitoring
+      server: https://kubernetes.default.svc
+  
+  # 允許的來源儲存庫
+  sourceRepos:
+    - git@github.com:detectviz/detectviz-gitops.git
+    - https://github.com/detectviz/detectviz-gitops.git
+    - https://grafana.github.io/helm-charts
+    - https://prometheus-community.github.io/helm-charts
+    - https://charts.bitnami.com/bitnami
+    - https://charts.min.io/
+  
+  # 允許部署的 Kubernetes 資源類型
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+    - group: ""
+      kind: PersistentVolume
+    - group: storage.k8s.io
+      kind: StorageClass
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+    - group: monitoring.coreos.com
+      kind: ServiceMonitor
+    - group: monitoring.coreos.com
+      kind: PrometheusRule
+    - group: monitoring.coreos.com
+      kind: PodMonitor
+  
+  # 命名空間資源許可清單
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"
+  
+  # 孤立資源處理策略
+  orphanedResources:
+    warn: true
+    ignore:
+      - group: ""
+        kind: ConfigMap
+        name: kube-root-ca.crt
