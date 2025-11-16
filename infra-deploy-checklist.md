@@ -74,63 +74,34 @@ README.md
    - 設定位置：ansible/deploy-cluster.yml
 [x] **SSH reachable（已確認成功）**
    - 設定位置：ansible/inventory.ini
-[ ] **swap off** 是否有自動設定
-   - **狀態**: ❌ 未配置
-   - **說明**: 在所有 Ansible roles 中未找到禁用 swap 的任務
-   - **建議**: 在 `ansible/roles/common/tasks/main.yml` 中添加 swap 禁用任務
-   - **參考配置**:
-     ```yaml
-     - name: Disable swap
-       become: true
-       ansible.builtin.command: swapoff -a
-       changed_when: false
-
-     - name: Disable swap permanently
-       become: true
-       ansible.builtin.lineinfile:
-         path: /etc/fstab
-         regexp: '.*swap.*'
-         state: absent
-     ```
-[ ] **SSH 設定** PasswordAuthentication no (禁用 SSH 密碼登入)
-   - **狀態**: ❌ 未配置
-   - **說明**: 沒有配置 SSH 安全強化
-   - **建議**: 在 `ansible/roles/common/tasks/main.yml` 中添加 SSH 安全配置
-   - **參考配置**:
-     ```yaml
-     - name: Harden SSH configuration
-       become: true
-       ansible.builtin.lineinfile:
-         path: /etc/ssh/sshd_config
-         regexp: '^#?PasswordAuthentication'
-         line: 'PasswordAuthentication no'
-         state: present
-       notify: Restart sshd
-     ```
-[ ] **自動化檢查 outbound + DNS + ImagePull**
-   - **狀態**: ❌ 未配置
-   - **說明**: 沒有預檢查任務驗證網路連通性、DNS 解析和容器鏡像拉取
-   - **建議**: 在 `ansible/roles/common/tasks/main.yml` 中添加預檢查任務
-   - **範例**:
-     ```yaml
-     - name: Check Internet Connectivity
-       ansible.builtin.shell: ping -c1 8.8.8.8
-       register: ping_result
-       failed_when: ping_result.rc != 0
-       changed_when: false
-
-     - name: Check DNS Resolution
-       ansible.builtin.shell: nslookup registry.k8s.io
-       register: dns_result
-       failed_when: dns_result.rc != 0
-       changed_when: false
-
-     - name: Test Container Image Pull
-       ansible.builtin.shell: crictl pull registry.k8s.io/pause:3.10
-       register: pull_result
-       failed_when: pull_result.rc != 0
-       changed_when: false
-     ```
+[x] **swap off 自動設定**
+   - **狀態**: ✅ 已完成
+   - **設定位置**: `ansible/roles/common/tasks/main.yml:6-27`
+   - **實作內容**:
+     - 立即禁用 swap (`swapoff -a`)
+     - 永久禁用 (修改 /etc/fstab，註解掉 swap 條目)
+     - 驗證 swap 已完全禁用
+   - **重要性**: Kubernetes 必要條件，確保節點穩定運行
+[x] **SSH 安全配置強化**
+   - **狀態**: ✅ 已完成
+   - **設定位置**: `ansible/roles/common/tasks/main.yml:247-287`
+   - **實作內容**:
+     - 禁用密碼登入 (PasswordAuthentication no)
+     - 禁止 root 密碼登入 (PermitRootLogin prohibit-password)
+     - 禁止空密碼 (PermitEmptyPasswords no)
+     - 配置驗證 (validate sshd_config 語法)
+     - 添加 sshd restart handler
+   - **安全性**: 強制使用 SSH 金鑰認證，提高系統安全性
+[x] **網路與服務預檢查（部署前驗證）**
+   - **狀態**: ✅ 已完成
+   - **設定位置**: `ansible/roles/common/tasks/main.yml:136-179`
+   - **實作內容**:
+     - Internet 連通性檢查 (ping 8.8.8.8)
+     - 外部 DNS 解析檢查 (nslookup registry.k8s.io)
+     - 內部 DNS 解析檢查 (getent hosts detectviz.internal)
+     - 容器鏡像拉取測試 (crictl pull registry.k8s.io/pause:3.10)
+     - 顯示檢查結果摘要
+   - **好處**: 部署前驗證所有依賴，降低部署失敗率
 [x] **Container Runtime 安裝方式**
    - 設定位置：ansible/roles/common/templates/containerd-config.toml.j2, ansible/roles/common/tasks/main.yml
    - [x] containerd - ansible/roles/common/tasks/main.yml (安裝 containerd)
@@ -164,24 +135,44 @@ README.md
      - VIP 配置 (192.168.0.10)
      - Sync wave: -3 (優先於其他基礎設施部署)
    - **注意**: kube-vip 在 Ansible 階段作為 Static Pod 部署於第一個 master,GitOps manifest 用於後續管理
-[ ] **Calico Overlay 目前還未區分「bootstrap 與 runtime」兩層 manifest**
-   - **狀態**: ❌ 未完成
-   - **說明**: Calico 目前只在 Ansible master role 中部署 (一次性),沒有 GitOps manifest
-   - **設定位置**: `ansible/roles/master/tasks/main.yml:359-380`
-   - **建議**:
-     1. 保留 Ansible 部署的 Calico 作為 bootstrap (必要,用於集群初始化)
-     2. 在 `argocd/apps/infrastructure/calico/` 創建 GitOps manifest (可選,用於後續配置管理)
-     3. 使用 ArgoCD sync-wave 確保不會衝突
-   - **參考**: Calico manifest URL: `https://raw.githubusercontent.com/projectcalico/calico/v3.27.3/manifests/calico.yaml`
-[x] **CNI MTU 已配合 vmbr0 MTU 1500 設定**
-   - **狀態**: ✅ 已配置
+[x] **Calico CNI 架構分層（Bootstrap Only）**
+   - **狀態**: ✅ 正確（無需 Runtime Layer）
+   - **設定位置**: `ansible/roles/master/tasks/main.yml:359-453`
+   - **架構決策**: Bootstrap Only（符合 CNI 特性）
+   - **實作內容**:
+     - ✅ 下載 Calico v3.27.3 manifest
+     - ✅ 修改 Pod CIDR (`10.244.0.0/16`)
+     - ✅ 配置 VXLAN MTU (`1450`) - 使用 yq 修改 FELIX_VXLANMTU
+     - ✅ 配置 Wireguard MTU (`1450`)
+     - ✅ 應用 FelixConfiguration (vxlanMTU, health check, Prometheus metrics)
+     - ✅ 等待 CRD 就緒後應用配置
+   - **為何不需要 GitOps Layer**:
+     1. CNI 是集群網路基礎，必須在 kubeadm init 後立即部署
+     2. 一旦部署，通常不需要頻繁更新
+     3. 讓 ArgoCD 管理 Calico DaemonSet 風險過高（可能導致網路中斷）
+   - **參考**: `ARCHITECTURE_ANALYSIS.md` 第 2 節完整分析
+[x] **CNI MTU 完整配置（Host MTU 1500 → VXLAN MTU 1450）**
+   - **狀態**: ✅ 已完成
    - **設定位置**:
-     - `ansible/inventory.ini:32` (network_mtu=1500)
-     - `ansible/roles/network/templates/netplan-50-custom-network.yaml.j2`
-     - `ansible/roles/network/tasks/configure-interfaces.yml`
-   - **說明**: MTU 已正確設定為 1500,符合標準網路環境
-   - **驗證**: 網路介面配置中已包含 MTU 設定和驗證步驟
-   - **注意**: Calico CNI 會自動偵測底層網路 MTU,無需額外配置
+     - Host 網路: `ansible/inventory.ini:32` (network_mtu=1500)
+     - Netplan 配置: `ansible/roles/network/templates/netplan-50-custom-network.yaml.j2`
+     - Calico VXLAN MTU: `ansible/roles/master/tasks/main.yml:376-406`
+     - FelixConfiguration: `ansible/roles/master/templates/felix-configuration.yaml.j2`
+   - **完整實作**:
+     - ✅ Host 網路 MTU: 1500 (eth0 + eth1)
+     - ✅ Calico VXLAN MTU: 1450 (1500 - 50 bytes VXLAN overhead)
+     - ✅ FELIX_VXLANMTU: 1450 (環境變數)
+     - ✅ FELIX_WIREGUARDMTU: 1450 (環境變數)
+     - ✅ FelixConfiguration: vxlanMTU=1450 (CRD 資源)
+   - **網路模式**: VXLAN Always (虛擬化環境必要，無法使用 BGP)
+   - **驗證**:
+     ```bash
+     # 檢查 Calico MTU
+     kubectl get daemonset calico-node -n kube-system -o yaml | grep -A 2 FELIX_VXLANMTU
+     # 檢查 FelixConfiguration
+     kubectl get felixconfiguration default -o yaml
+     ```
+   - **參考**: README.md MTU 已修正為 1450
 
 # 5. Vault（Phase 5）
 
@@ -198,73 +189,48 @@ README.md
    - **部署後操作**: 需手動執行 `vault operator init` 和 `vault operator unseal`
    - **注意**: Unseal keys 和 root token 必須安全保存於 Bitwarden/1Password
 
-[~] **Vault Health Probes 配置**
-   - **狀態**: ⚠️ 部分完成
-   - **設定位置**: `argocd/apps/infrastructure/vault/overlays/charts/vault-0.28.0/vault/values.yaml`
-   - **當前配置**:
+[x] **Vault Health Probes 配置**
+   - **狀態**: ✅ 已完成
+   - **設定位置**: `argocd/apps/infrastructure/vault/overlays/values.yaml:100-109`
+   - **完整配置**:
      - ✅ **readinessProbe**: enabled: true (已啟用)
        - 使用 `vault status -tls-skip-verify` 命令檢查
        - failureThreshold: 2, periodSeconds: 2
-     - ❌ **livenessProbe**: enabled: false (預設禁用)
+     - ✅ **livenessProbe**: enabled: true (已啟用)
        - 路徑: `/v1/sys/health?standbyok=true`
-       - 需在 `argocd/apps/infrastructure/vault/overlays/values.yaml` 中覆蓋啟用
-   - **建議配置**:
-     ```yaml
-     server:
-       livenessProbe:
-         enabled: true
-         path: "/v1/sys/health?standbyok=true"
-         port: 8200
-         failureThreshold: 2
-         initialDelaySeconds: 60  # Vault 需要較長啟動時間
-         periodSeconds: 5
-         successThreshold: 1
-         timeoutSeconds: 3
-     ```
+       - initialDelaySeconds: 60 (Vault 需要較長啟動時間)
+       - periodSeconds: 5, failureThreshold: 2
+   - **好處**: 提高 Vault 可用性監控，自動重啟異常 Pod
 
-[ ] **Vault Backup/Snapshot 配置**
-   - **狀態**: ❌ 未配置
-   - **說明**: 目前沒有自動化備份/快照機制
-   - **建議**:
-     1. **手動備份**: 使用 `vault operator raft snapshot save` 命令
-     2. **自動化備份**: 創建 CronJob 定期執行快照
-     3. **備份儲存**: 將快照保存到外部儲存 (S3/NFS/本地)
-   - **參考配置** (創建 `argocd/apps/infrastructure/vault/overlays/backup-cronjob.yaml`):
-     ```yaml
-     apiVersion: batch/v1
-     kind: CronJob
-     metadata:
-       name: vault-backup
-       namespace: vault
-     spec:
-       schedule: "0 2 * * *"  # 每天凌晨 2 點
-       jobTemplate:
-         spec:
-           template:
-             spec:
-               serviceAccountName: vault
-               containers:
-               - name: backup
-                 image: hashicorp/vault:1.15.6
-                 command:
-                 - /bin/sh
-                 - -c
-                 - |
-                   vault operator raft snapshot save /backup/vault-snapshot-$(date +%Y%m%d-%H%M%S).snap
-                 env:
-                 - name: VAULT_ADDR
-                   value: "http://vault-0.vault-internal:8200"
-                 volumeMounts:
-                 - name: backup
-                   mountPath: /backup
-               volumes:
-               - name: backup
-                 persistentVolumeClaim:
-                   claimName: vault-backup-pvc
-               restartPolicy: OnFailure
-     ```
-   - **手動執行備份**:
+[x] **Vault 自動備份 CronJob 配置**
+   - **狀態**: ✅ 已完成
+   - **設定位置**:
+     - CronJob 定義: `argocd/apps/infrastructure/vault/overlays/backup-cronjob.yaml`
+     - Kustomization: `argocd/apps/infrastructure/vault/overlays/kustomization.yaml:4-5`
+   - **完整實作**:
+     - ✅ **CronJob 排程**: 每天凌晨 2 點執行 (`0 2 * * *`)
+     - ✅ **備份儲存**: 20Gi PVC (vault-backup-pvc, topolvm-provisioner)
+     - ✅ **備份腳本**: Raft snapshot + 自動清理 30 天前舊備份
+     - ✅ **RBAC**: ServiceAccount, Role, RoleBinding 完整配置
+     - ✅ **安全性**: Pod Security Standards 合規 (runAsNonRoot, drop ALL capabilities)
+     - ✅ **歷史記錄**: 保留最近 7 次成功 + 3 次失敗記錄
+   - **備份流程**:
+     1. 檢查 Vault 狀態 (sealed/unsealed)
+     2. 執行 `vault operator raft snapshot save`
+     3. 驗證備份檔案
+     4. 清理超過 30 天的舊備份
+     5. 列出當前所有備份
+   - **手動備份命令** (緊急情況使用):
      ```bash
      kubectl exec -n vault vault-0 -- vault operator raft snapshot save /tmp/vault-backup.snap
      kubectl cp vault/vault-0:/tmp/vault-backup.snap ./vault-backup-$(date +%Y%m%d).snap
+     ```
+   - **驗證備份**:
+     ```bash
+     # 檢查 CronJob
+     kubectl get cronjob vault-backup -n vault
+     # 檢查最近的 Job
+     kubectl get jobs -n vault -l app.kubernetes.io/name=vault-backup
+     # 檢查備份檔案
+     kubectl exec -n vault vault-0 -- ls -lh /backup/
      ```
