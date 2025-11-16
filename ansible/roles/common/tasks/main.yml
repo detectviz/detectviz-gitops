@@ -1,4 +1,35 @@
 ---
+# ============================================
+# 系統初始化：禁用 swap（Kubernetes 必要條件）
+# ============================================
+
+- name: "Disable swap immediately"
+  become: true
+  ansible.builtin.command: swapoff -a
+  changed_when: false
+  # 說明：立即禁用 swap，Kubernetes 要求所有節點必須禁用 swap
+
+- name: "Disable swap permanently in /etc/fstab"
+  become: true
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    regexp: '^\s*([^#].*?\sswap\s+sw\s+.*)'
+    line: '# \1'
+    backrefs: yes
+    state: present
+  # 說明：註解掉 /etc/fstab 中的 swap 條目，確保重啟後 swap 仍然禁用
+
+- name: "Verify swap is disabled"
+  ansible.builtin.command: swapon --show
+  register: swap_status
+  changed_when: false
+  failed_when: swap_status.stdout != ""
+  # 說明：驗證 swap 已完全禁用，如果有輸出則表示仍有 swap 啟用
+
+# ============================================
+# 系統套件管理
+# ============================================
+
 - name: "Update apt cache"
   become: true
   ansible.builtin.apt:
@@ -102,6 +133,55 @@
   ansible.builtin.apt:
     update_cache: yes
 
+# ============================================
+# 網路與服務預檢查（部署前驗證）
+# ============================================
+
+- name: "Check Internet connectivity (ping 8.8.8.8)"
+  ansible.builtin.command: ping -c 2 -W 3 8.8.8.8
+  register: ping_result
+  changed_when: false
+  failed_when: ping_result.rc != 0
+  # 說明：驗證節點可以訪問外部網路（必要，用於拉取容器鏡像和套件）
+
+- name: "Check DNS resolution (registry.k8s.io)"
+  ansible.builtin.command: nslookup registry.k8s.io
+  register: dns_result
+  changed_when: false
+  failed_when: dns_result.rc != 0
+  # 說明：驗證 DNS 解析功能正常（必要，用於解析容器鏡像倉庫域名）
+
+- name: "Check internal DNS resolution (detectviz.internal)"
+  ansible.builtin.command: getent hosts {{ inventory_hostname }}.detectviz.internal
+  register: internal_dns_result
+  changed_when: false
+  failed_when: internal_dns_result.rc != 0
+  # 說明：驗證內部域名解析正常（必要，用於節點間通訊）
+
+- name: "Display network check results"
+  ansible.builtin.debug:
+    msg:
+      - "✅ Internet connectivity: OK"
+      - "✅ DNS resolution (registry.k8s.io): OK"
+      - "✅ Internal DNS ({{ inventory_hostname }}.detectviz.internal): OK"
+  # 說明：顯示網路檢查結果，確認所有預檢查通過
+
+- name: "Test container image pull (pause:3.10)"
+  become: true
+  ansible.builtin.command: crictl pull registry.k8s.io/pause:3.10
+  register: pull_result
+  changed_when: false
+  failed_when: pull_result.rc != 0
+  # 說明：測試容器鏡像拉取功能（必要，確保 containerd 可以正常拉取 Kubernetes 鏡像）
+
+- name: "Display image pull result"
+  ansible.builtin.debug:
+    msg: "✅ Container image pull test: OK (pause:3.10 pulled successfully)"
+
+# ============================================
+# 安裝 Kubernetes 組件
+# ============================================
+
 - name: "Install Kubernetes components"
   become: true
   ansible.builtin.apt:
@@ -159,3 +239,49 @@
     - { name: "net.ipv4.ip_forward", value: "1" }
     - { name: "net.bridge.bridge-nf-call-iptables", value: "1" }
     - { name: "net.bridge.bridge-nf-call-ip6tables", value: "1" }
+
+# ============================================
+# SSH 安全配置強化
+# ============================================
+
+- name: "Harden SSH configuration - Disable password authentication"
+  become: true
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?PasswordAuthentication'
+    line: 'PasswordAuthentication no'
+    state: present
+    validate: '/usr/sbin/sshd -t -f %s'
+  notify: Restart sshd
+  # 說明：禁用密碼登入，強制使用 SSH 金鑰認證（提高安全性）
+
+- name: "Harden SSH configuration - Disable root login"
+  become: true
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?PermitRootLogin'
+    line: 'PermitRootLogin prohibit-password'
+    state: present
+    validate: '/usr/sbin/sshd -t -f %s'
+  notify: Restart sshd
+  # 說明：禁止 root 使用密碼登入（僅允許金鑰認證）
+
+- name: "Harden SSH configuration - Disable empty passwords"
+  become: true
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?PermitEmptyPasswords'
+    line: 'PermitEmptyPasswords no'
+    state: present
+    validate: '/usr/sbin/sshd -t -f %s'
+  notify: Restart sshd
+  # 說明：禁止空密碼登入
+
+- name: "Display SSH hardening status"
+  ansible.builtin.debug:
+    msg:
+      - "✅ SSH security hardening applied:"
+      - "  - Password authentication: DISABLED"
+      - "  - Root password login: DISABLED"
+      - "  - Empty passwords: DISABLED"
+      - "  - SSH key authentication: REQUIRED"

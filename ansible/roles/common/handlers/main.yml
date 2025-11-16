@@ -3,3 +3,9 @@
   ansible.builtin.service:
     name: containerd
     state: restarted
+
+- name: Restart sshd
+  become: true
+  ansible.builtin.service:
+    name: sshd
+    state: restarted

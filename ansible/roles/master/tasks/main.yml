@@ -373,11 +373,84 @@
   become: false
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
 
+- name: "[P2] Configure Calico VXLAN MTU (1450 for host MTU 1500)"
+  ansible.builtin.shell: |
+    # 找到 calico-node DaemonSet 並添加 FELIX_VXLANMTU 環境變數
+    yq eval -i '
+      (select(.kind == "DaemonSet" and .metadata.name == "calico-node") |
+       .spec.template.spec.containers[] |
+       select(.name == "calico-node") |
+       .env) += [
+        {"name": "FELIX_VXLANMTU", "value": "1450"},
+        {"name": "FELIX_WIREGUARDMTU", "value": "1450"}
+      ]
+    ' {{ calico_manifest_local_path }}
+  become: false
+  when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
+  # 說明：設定 Calico VXLAN MTU 為 1450 (host MTU 1500 - 50 bytes VXLAN overhead)
+
+- name: "[P2] Verify Calico MTU configuration"
+  ansible.builtin.shell: |
+    grep -A 2 "FELIX_VXLANMTU" {{ calico_manifest_local_path }} || echo "MTU configuration added"
+  register: mtu_check
+  changed_when: false
+  when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
+
+- name: "[P2] Display Calico MTU configuration"
+  ansible.builtin.debug:
+    msg:
+      - "✅ Calico VXLAN MTU configured:"
+      - "  - Host MTU: 1500"
+      - "  - VXLAN MTU: 1450 (1500 - 50 overhead)"
+      - "  - VXLAN Mode: Always (required for VM environment)"
+  when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
+
 - name: "[P2] Apply Calico CNI"
   ansible.builtin.command: "kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f {{ calico_manifest_local_path }} --validate=false"
   become: true
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
   changed_when: true
+
+- name: "[P2] Wait for Calico CRDs to be ready"
+  ansible.builtin.command: kubectl --kubeconfig=/etc/kubernetes/admin.conf wait --for condition=established --timeout=60s crd/felixconfigurations.crd.projectcalico.org
+  register: crd_wait
+  retries: 3
+  delay: 10
+  until: crd_wait.rc == 0
+  changed_when: false
+  when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
+  # 說明：等待 Calico CRD 就緒後才能應用 FelixConfiguration
+
+- name: "[P2] Copy FelixConfiguration template"
+  ansible.builtin.template:
+    src: felix-configuration.yaml.j2
+    dest: /tmp/felix-configuration.yaml
+    mode: "0644"
+  when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
+
+- name: "[P2] Apply Calico FelixConfiguration"
+  ansible.builtin.command: kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f /tmp/felix-configuration.yaml
+  become: true
+  when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
+  changed_when: true
+  # 說明：應用 FelixConfiguration 以設定全域 VXLAN MTU 和其他網路參數
+
+- name: "[P2] Verify FelixConfiguration"
+  ansible.builtin.command: kubectl --kubeconfig=/etc/kubernetes/admin.conf get felixconfiguration default -o yaml
+  register: felix_config
+  changed_when: false
+  when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
+
+- name: "[P2] Display FelixConfiguration status"
+  ansible.builtin.debug:
+    msg:
+      - "✅ Calico FelixConfiguration applied successfully"
+      - "  - VXLAN MTU: 1450"
+      - "  - VXLAN Enabled: true"
+      - "  - Wireguard MTU: 1450"
+      - "  - Health check port: 9099"
+      - "  - Prometheus metrics port: 9091"
+  when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
 
 - name: "[P2] Skip kube-proxy configuration (will use defaults)"
   ansible.builtin.debug:

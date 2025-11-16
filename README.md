@@ -47,7 +47,7 @@ graph LR
 ## infra 服務列表 (detectviz-gitops)
 對應部署階段：[P2] ~ [P4]
 - [P2] **kube-vip**：控制平面高可用 (VIP 192.168.0.10，L2 ARP 模式)
-- [P2] **calico**：CNI 網路插件 (VXLAN mode，NetworkPolicy enforcement，MTU 8950)
+- [P2] **calico**：CNI 網路插件 (VXLAN mode，NetworkPolicy enforcement，MTU 1450)
 - [P3] **argocd**：GitOps 控制面與應用交付 (HA 模式，Redis HA)
 - [P3] **vault**：秘密管理與安全存儲 (Raft 儲存後端)
 - [P3] **cert-manager**：TLS 證書自動化管理 (Self-signed ClusterIssuer)
