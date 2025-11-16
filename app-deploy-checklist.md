@@ -97,7 +97,11 @@ monitoring  → Prometheus + Loki + Tempo + Mimir + Alloy Agent
   vault kv put secret/grafana/oauth keycloak-client-secret="$(openssl rand -base64 32)"
 
   # Minio secrets
-  vault kv put secret/monitoring/minio root-user="admin" root-password="$(openssl rand -base64 32)"
+  vault kv put secret/monitoring/minio \
+    root-user="admin" \
+    root-password="$(openssl rand -base64 32)" \
+    mimir-access-key="mimir" \
+    mimir-secret-key="$(openssl rand -base64 32)"
   ```
 
 ---
@@ -181,16 +185,19 @@ monitoring  → Prometheus + Loki + Tempo + Mimir + Alloy Agent
   - StorageClass: `local-path`
   - Storage: 10Gi
 
-### Loki ⚠️
+### Loki ✅
 
-- [x] **Loki 基礎配置**
+- [x] **Loki 完整配置**
   - 文件: `argocd/apps/observability/loki/overlays/values.yaml`
   - Namespace: `monitoring`
-
-- [ ] **待檢查: Loki storage 配置**
-  - 確認 storage backend (filesystem/s3/minio)
-  - 確認 retention policy
-  - 確認 chunk/index storage
+  - Storage: filesystem backend (TSDB + filesystem)
+  - Retention: 30 天
+  - HA: 所有元件 2 replicas (distributor, ingester, querier, query_frontend, gateway)
+  - Persistence:
+    - Ingester: 20Gi (local-path)
+    - Compactor: 10Gi (local-path)
+  - ServiceMonitor: enabled (所有元件)
+  - Schema: TSDB v13 (推薦格式)
 
 ### Tempo ⚠️
 
@@ -198,34 +205,55 @@ monitoring  → Prometheus + Loki + Tempo + Mimir + Alloy Agent
   - 文件: `argocd/apps/observability/tempo/overlays/`
   - Namespace: `monitoring`
   - Version: 1.10.0
+  - Storage: 100Gi (topolvm-provisioner) on app-worker nodes
+  - **注意**: 使用 Helm chart 默認配置 + storage patch
 
-- [ ] **待檢查: Tempo storage 配置**
-  - 確認 storage backend
-  - 確認 retention policy
-  - 確認 OTLP receiver 配置
+- [ ] **待補充: Tempo 生產配置**
+  - 建議創建 `overlays/values.yaml` 明確配置:
+    - Retention policy
+    - OTLP receiver 配置
+    - S3/Minio backend (可選，目前使用 filesystem)
+    - HA replicas 配置
 
-### Mimir ⚠️
+### Mimir ✅
 
-- [x] **Mimir 基礎配置**
+- [x] **Mimir 完整配置**
   - 文件: `argocd/apps/observability/mimir/overlays/values.yaml`
   - Namespace: `monitoring`
+  - Storage: S3 backend (Minio)
+  - Minio endpoint: `minio.monitoring.svc.cluster.local:9000`
+  - Buckets: mimir-blocks, mimir-alertmanager, mimir-ruler
+  - HA: 所有元件 2 replicas
+  - Memberlist: gossip protocol for service discovery
+  - PVC: disabled (使用 S3 backend)
+  - ServiceMonitor: enabled
+  - Secret: `minio-mimir-user` (accessKey: mimir, secretKey from Vault)
 
-- [ ] **待檢查: Mimir S3/Minio backend**
-  - 確認 Minio 整合
-  - 確認 blocks storage 配置
-  - 確認 compactor 配置
+### Minio ✅
 
-### Minio ⚠️
-
-- [x] **Minio ExternalSecret 配置**
-  - 文件: `argocd/apps/observability/minio/overlays/externalsecret.yaml`
+- [x] **Minio 完整配置**
+  - 文件: `argocd/apps/observability/minio/overlays/values.yaml`
   - Namespace: `monitoring`
-  - Vault path: `secret/data/monitoring/minio`
+  - Mode: standalone (1 replica)
+  - Storage: 100Gi (topolvm-provisioner) on app-worker nodes
+  - Buckets: 自動創建
+    - mimir-blocks (policy: none)
+    - mimir-ruler (policy: none)
+    - mimir-alertmanager (policy: none)
+  - Users: 自動創建 mimir user (policy: readwrite)
+  - ServiceMonitor: enabled
+  - Resources: 512Mi-2Gi memory, 250m-1000m CPU
 
-- [ ] **待檢查: Minio 配置**
-  - 確認 values.yaml 配置
-  - 確認 PVC 配置
-  - 確認 bucket 自動創建 (for Loki/Tempo/Mimir)
+- [x] **Minio ExternalSecrets 配置**
+  - 文件: `argocd/apps/observability/minio/overlays/externalsecret.yaml`
+  - Secrets:
+    - `minio-root-credentials`: root-user, root-password
+    - `minio-mimir-user`: accessKey (mimir), secretKey
+  - Vault paths:
+    - `secret/data/monitoring/minio/root-user`
+    - `secret/data/monitoring/minio/root-password`
+    - `secret/data/monitoring/minio/mimir-access-key`
+    - `secret/data/monitoring/minio/mimir-secret-key`
 
 ---
 
@@ -461,35 +489,30 @@ monitoring  → Prometheus + Loki + Tempo + Mimir + Alloy Agent
 
 ### ApplicationSet 配置 ✅
 
-- [x] **ApplicationSet 配置**
+- [x] **ApplicationSet 配置 (已修正)**
   - 文件: `argocd/appsets/apps-appset.yaml`
-  - Generator: Git directories
-  - Paths:
-    - `argocd/apps/observability/*` → namespace: `{{path.basename}}`
-    - `argocd/apps/identity/*` → namespace: `{{path.basename}}`
-  - Sync Policy: manual (需手動同步)
+  - Generator: **List generator** (明確指定 namespace mapping)
+  - Sync Policy: manual (需手動同步，建立 Vault 初始化閘門)
+  - ignoreDifferences: Secret data (由 ExternalSecrets 管理)
 
-- [x] **預期自動生成的 Applications**
-  - `postgresql` → namespace: `postgresql`
-  - `keycloak` → namespace: `keycloak`
-  - `grafana` → namespace: `grafana`
-  - `prometheus` → namespace: `prometheus` (⚠️ 應該是 monitoring)
-  - `loki` → namespace: `loki` (⚠️ 應該是 monitoring)
-  - `tempo` → namespace: `tempo` (⚠️ 應該是 monitoring)
-  - `mimir` → namespace: `mimir` (⚠️ 應該是 monitoring)
-  - `minio` → namespace: `minio` (⚠️ 應該是 monitoring)
-  - `alertmanager` → namespace: `alertmanager` (⚠️ 應該是 monitoring)
-  - `node-exporter` → (已刪除)
-  - `pgbouncer-hpa` → namespace: `pgbouncer-hpa` (⚠️ 應該是 monitoring 或 postgresql)
+- [x] **Applications 正確映射**
 
-**⚠️ 問題發現**: ApplicationSet 使用 `{{path.basename}}` 會為每個目錄創建獨立 namespace，這與期望的架構不符！
+  **Platform Services (獨立 namespace)**:
+  - `postgresql` → namespace: `postgresql`, category: platform-service
+  - `keycloak` → namespace: `keycloak`, category: platform-service
 
-### 待修正: ApplicationSet Generator ⚠️
+  **Application Layer (獨立 namespace)**:
+  - `grafana` → namespace: `grafana`, category: application
 
-- [ ] **修正 ApplicationSet 以支持統一 monitoring namespace**
-  - 方案 A: 將所有 observability 組件移動到 `argocd/apps/observability/monitoring/*` 子目錄
-  - 方案 B: 修改 ApplicationSet 使用 list generator 明確指定 namespace mapping
-  - 方案 C: 使用兩個 ApplicationSet (observability-appset, platform-appset)
+  **Observability Backend (統一 monitoring namespace)**:
+  - `prometheus` → namespace: `monitoring`, category: observability ✅
+  - `loki` → namespace: `monitoring`, category: observability ✅
+  - `tempo` → namespace: `monitoring`, category: observability ✅
+  - `mimir` → namespace: `monitoring`, category: observability ✅
+  - `minio` → namespace: `monitoring`, category: observability ✅
+  - `alertmanager` → namespace: `monitoring`, category: observability ✅
+
+**✅ 修正完成**: 使用 List generator 明確指定每個應用的 namespace，符合 Platform Engineering 架構設計
 
 ---
 
@@ -737,13 +760,17 @@ monitoring  → Prometheus + Loki + Tempo + Mimir + Alloy Agent
 
 **狀態總結**:
 - ✅ **Phase 6 配置完成**: 所有 manifests 已正確配置
-- ⚠️ **待修正**: ApplicationSet generator (monitoring namespace 問題)
-- ⚠️ **待補充**: Loki/Tempo/Mimir 詳細配置驗證
-- ⚠️ **待補充**: Keycloak Realm 配置
-- ⚠️ **待補充**: Grafana Dashboard Provisioning
-- 🔜 **下一步**: 初始化 Vault secrets 後開始部署驗證
+- ✅ **ApplicationSet 已修正**: 使用 List generator 明確指定 namespace mapping
+- ✅ **Loki 配置完成**: filesystem backend, 30天 retention, HA 配置
+- ✅ **Mimir 配置完成**: S3/Minio backend, HA 配置, buckets 自動創建
+- ✅ **Minio 配置完成**: standalone mode, 100Gi storage, ExternalSecrets 完整配置
+- ⚠️ **待補充**: Tempo 生產配置 (目前使用默認配置 + storage patch)
+- ⚠️ **待補充**: Alloy host metrics 配置 (取代 node-exporter)
+- ⚠️ **待補充**: Keycloak Realm 配置 (OAuth2 client for Grafana)
+- ⚠️ **待補充**: Grafana Dashboard Provisioning as Code
+- 🔜 **下一步**: 初始化 Vault secrets 後開始部署驗證 (參考 Phase 7)
 
 ---
 
-**最後更新**: 2025-11-16
+**最後更新**: 2025-11-16 (Phase 6 配置完整性驗證完成)
 **維護**: 隨配置和部署進度持續更新

@@ -40,7 +40,9 @@ secret/
 └── monitoring/
     └── minio/
         ├── root-user              # Minio root username
-        └── root-password          # Minio root password
+        ├── root-password          # Minio root password
+        ├── mimir-access-key       # Minio user for Mimir (accessKey)
+        └── mimir-secret-key       # Minio user for Mimir (secretKey)
 ```
 
 ---
@@ -270,7 +272,58 @@ vault kv put secret/grafana/oauth \
 ```bash
 vault kv put secret/monitoring/minio \
   root-user="admin" \
-  root-password="$(openssl rand -base64 32)"
+  root-password="$(openssl rand -base64 32)" \
+  mimir-access-key="mimir" \
+  mimir-secret-key="$(openssl rand -base64 32)"
+```
+
+---
+
+### Minio ExternalSecrets
+
+**Namespace**: `monitoring`
+**文件**: `argocd/apps/observability/minio/overlays/externalsecret.yaml`
+
+```yaml
+# Minio root credentials
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: minio-root-credentials
+  namespace: monitoring
+spec:
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: vault-backend
+  target:
+    name: minio-root-credentials
+  data:
+    - secretKey: rootUser
+      remoteRef:
+        key: secret/data/monitoring/minio
+        property: root-user
+    - secretKey: rootPassword
+      remoteRef:
+        key: secret/data/monitoring/minio
+        property: root-password
+
+---
+# Minio user for Mimir
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: minio-mimir-user
+  namespace: monitoring
+spec:
+  data:
+    - secretKey: accessKey
+      remoteRef:
+        key: secret/data/monitoring/minio
+        property: mimir-access-key
+    - secretKey: secretKey
+      remoteRef:
+        key: secret/data/monitoring/minio
+        property: mimir-secret-key
 ```
 
 ---
