@@ -1,0 +1,35 @@
+---
+apiVersion: crd.projectcalico.org/v3
+kind: FelixConfiguration
+metadata:
+  name: default
+spec:
+  # VXLAN MTU 設定（host MTU - 50 bytes overhead）
+  vxlanMTU: 1450
+
+  # 啟用 VXLAN 封裝模式（VM 環境必要）
+  vxlanEnabled: true
+
+  # 其他網路模式 MTU（保持一致）
+  wireguardMTU: 1450
+
+  # 日誌級別（生產環境使用 info，除錯時可用 debug）
+  logSeverityScreen: Info
+
+  # 健康檢查配置
+  healthEnabled: true
+  healthPort: 9099
+
+  # Prometheus metrics
+  prometheusMetricsEnabled: true
+  prometheusMetricsPort: 9091
+
+  # 報告間隔（秒）
+  reportingInterval: 30s
+
+  # NetworkPolicy 相關設定
+  defaultEndpointToHostAction: ACCEPT
+  iptablesMarkMask: "0xffff0000"
+
+  # 禁用不需要的協議
+  ipipEnabled: false

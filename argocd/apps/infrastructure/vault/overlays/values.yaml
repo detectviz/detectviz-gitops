@@ -97,6 +97,17 @@ server:
                 component: server
             topologyKey: kubernetes.io/hostname
 
+  # Liveness Probe 配置（啟用以提高可用性）
+  livenessProbe:
+    enabled: true
+    path: "/v1/sys/health?standbyok=true"
+    port: 8200
+    failureThreshold: 2
+    initialDelaySeconds: 60  # Vault 需要較長啟動時間
+    periodSeconds: 5
+    successThreshold: 1
+    timeoutSeconds: 3
+
 # UI 配置
 ui:
   enabled: true
