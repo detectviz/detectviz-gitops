@@ -57,7 +57,7 @@ dashboards: {}
 # ServiceMonitor (Prometheus Operator)
 serviceMonitor:
   enabled: true
-  namespace: monitoring
+  namespace: grafana # ServiceMonitor 應與 Grafana 在同一 namespace
   interval: 30s
   scrapeTimeout: 10s
   labels:
@@ -191,7 +191,7 @@ admin:
 # 參考: guide/grafana.md#1.1-部署與架構
 database:
   type: postgres
-  host: postgresql-pgpool.monitoring.svc.cluster.local:5432 # 指向 PostgreSQL 的高可用連線池 (Pgpool)。
+  host: postgresql-pgpool.postgresql.svc.cluster.local:5432 # 跨 namespace 連接到 postgresql namespace 的 Pgpool 服務
   name: grafana
   user: grafana
   existingSecret: grafana-database # 從 Secret 中讀取資料庫密碼。
@@ -244,7 +244,7 @@ env:
       secretKeyRef:
         name: grafana-keycloak-oauth
         key: client-secret
-    value: "grafana-alerting.monitoring.svc.cluster.local:9094" # 指向用於 Gossip 的 Headless Service。
+    value: "grafana-alerting.grafana.svc.cluster.local:9094" # 指向用於 Gossip 的 Headless Service (同一 namespace)。
 
 # 從 Secret 'grafana-database' 中注入所有鍵值對作為環境變數 (例如 GF_DATABASE_USER, GF_DATABASE_NAME)。
 envFromSecrets:
@@ -295,7 +295,7 @@ datasources:
 # 啟用 ServiceMonitor，讓 Prometheus Operator 可以自動發現並抓取 Grafana 自身的指標。
 serviceMonitor:
   enabled: true
-  namespace: monitoring
+  namespace: grafana # ServiceMonitor 應與 Grafana 在同一 namespace
   interval: 30s
   scrapeTimeout: 10s
   labels:
@@ -353,7 +353,7 @@ extraObjects:
     kind: Service
     metadata:
       name: grafana-alerting
-      namespace: monitoring
+      namespace: grafana # 與 Grafana 同一 namespace
       labels:
         app.kubernetes.io/name: grafana-alerting
         app.kubernetes.io/instance: grafana

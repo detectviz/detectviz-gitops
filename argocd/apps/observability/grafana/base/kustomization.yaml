@@ -6,4 +6,4 @@ helmCharts:
     repo: https://grafana.github.io/helm-charts
     version: "7.3.7"
     releaseName: grafana
-    namespace: monitoring
+    # namespace 由 ApplicationSet 的 destination.namespace 決定 (grafana)

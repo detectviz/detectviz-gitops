@@ -40,9 +40,9 @@ prometheus:
               storage: 20Gi
 
 # Node Exporter (收集節點指標)
+# **[已移除]** 已被 Grafana Alloy 的 host_metrics 功能完全取代
 prometheus-node-exporter:
-  enabled: true
-  fullnameOverride: node-exporter
+  enabled: false
 
 # kube-state-metrics (收集 Kubernetes 資源狀態)
 kube-state-metrics:
@@ -270,11 +270,10 @@ prometheus:
             honorLabels: true
 # --- Node Exporter (節點硬體指標) ---
 prometheus-node-exporter:
-  enabled: true
-  fullnameOverride: node-exporter
-  serviceMonitor:
-    enabled: true
-    relabelings:
+  # **[已移除]** Node Exporter 已被 Grafana Alloy 的 host_metrics 功能完全取代
+  # 參考: argocd/apps/observability/overlays/config.alloy
+  # Alloy 內建 prometheus.scrape 和 prometheus.exporter.unix 提供相同功能
+  enabled: false
       # ... relabeling 規則 ...
       - sourceLabels: [__meta_kubernetes_endpoint_node_name]
         targetLabel: node
