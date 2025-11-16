@@ -1,0 +1,66 @@
+---
+# Observability ApplicationSet - 管理 monitoring namespace 中的所有 observability 組件
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: observability-stack
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"  # 在基礎設施之後部署
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+
+  generators:
+    - list:
+        elements:
+          - appName: postgresql
+            path: argocd/apps/observability/postgresql/overlays
+          - appName: minio
+            path: argocd/apps/observability/minio/overlays
+          - appName: mimir
+            path: argocd/apps/observability/mimir/overlays
+          - appName: loki
+            path: argocd/apps/observability/loki/overlays
+          - appName: tempo
+            path: argocd/apps/observability/tempo/overlays
+          - appName: prometheus
+            path: argocd/apps/observability/prometheus/overlays
+          - appName: grafana
+            path: argocd/apps/observability/grafana/overlays
+
+  template:
+    metadata:
+      name: "obs-{{.appName}}"
+      labels:
+        app.kubernetes.io/instance: "{{.appName}}"
+        app.kubernetes.io/part-of: detectviz-observability
+        app.kubernetes.io/managed-by: argocd
+        environment: production
+        tier: observability
+
+    spec:
+      project: platform-observability
+
+      source:
+        repoURL: git@github.com:detectviz/detectviz-gitops.git
+        targetRevision: main
+        path: "{{.path}}"
+
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: monitoring
+
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+        retry:
+          limit: 3
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: 3m

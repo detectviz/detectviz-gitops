@@ -1,0 +1,34 @@
+# Local Path Provisioner Configuration
+# 用於 master 節點的本地儲存供應
+
+nodePathMap:
+  - node: master-1
+    paths:
+      - /var/lib/k8s-storage/prometheus
+      - /var/lib/k8s-storage/local-pv
+  - node: master-2
+    paths:
+      - /var/lib/k8s-storage/mimir
+      - /var/lib/k8s-storage/local-pv
+  - node: master-3
+    paths:
+      - /var/lib/k8s-storage/loki
+      - /var/lib/k8s-storage/local-pv
+
+# 只在 master 節點運行
+nodeSelector:
+  node-role.kubernetes.io/control-plane: ""
+
+tolerations:
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule
+
+# 資源限制
+resources:
+  limits:
+    cpu: 100m
+    memory: 128Mi
+  requests:
+    cpu: 10m
+    memory: 64Mi

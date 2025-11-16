@@ -1,0 +1,104 @@
+# Minio Configuration for Mimir Object Storage Backend
+# 本文件為 Minio 在生產環境的 Helm Chart Values，專門用於支援 Grafana Mimir 的長期儲存。
+#
+# 參考文件:
+# - Helm Chart 官方文檔: https://github.com/minio/minio/tree/master/helm/minio
+
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+helmCharts:
+  - name: minio
+    valuesInline:
+      # --- 部署模式 (Deployment Mode) ---
+      # **[關鍵]** 使用 standalone 模式（單實例）以簡化部署，適合中小規模環境。
+      # 生產環境可考慮升級為 distributed 模式（多實例）以實現高可用。
+      mode: standalone
+
+      replicas: 1
+
+      # --- 資源配置 (Resource Allocation) ---
+      resources:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+        limits:
+          cpu: 1000m
+          memory: 2Gi
+
+      # --- 持久化儲存 (Persistence) ---
+      # **[關鍵]** 使用 TopoLVM 提供高 IOPS 的 SSD 儲存給 Mimir 的 blocks。
+      persistence:
+        enabled: true
+        storageClass: topolvm-provisioner  # app-worker 節點 TopoLVM (data-vg SSD)
+        size: 100Gi
+        accessMode: ReadWriteOnce
+
+      # --- 安全配置 (Security) ---
+      # **[關鍵]** 從 Secret 中讀取 Minio 的 root 憑證。
+      # Secret 應由 scripts/bootstrap-app-secrets.sh 創建。
+      existingSecret: minio-root-credentials
+
+      # --- 服務配置 (Service Configuration) ---
+      service:
+        type: ClusterIP
+        port: 9000
+
+      consoleService:
+        type: ClusterIP
+        port: 9001
+
+      # --- 初始化配置 (Initialization) ---
+      # **[關鍵]** 預先創建 Mimir 所需的 bucket。
+      buckets:
+        - name: mimir-blocks
+          policy: none
+          purge: false
+        - name: mimir-ruler
+          policy: none
+          purge: false
+        - name: mimir-alertmanager
+          policy: none
+          purge: false
+
+      # --- 使用者配置 (Users) ---
+      # **[關鍵]** 創建專用的 mimir 使用者，並賦予 readwrite 權限。
+      users:
+        - accessKey: mimir
+          existingSecret: minio-mimir-user
+          existingSecretKey: secretKey
+          policy: readwrite
+
+      # --- 可觀測性 (Observability) ---
+      metrics:
+        serviceMonitor:
+          enabled: true
+          namespace: monitoring
+          interval: 30s
+          labels:
+            prometheus: kube-prometheus-stack
+            environment: production
+
+      # --- 調度策略 (Scheduling) ---
+      # **[關鍵]** 調度到 app-worker 節點以使用 TopoLVM。
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/worker
+                    operator: In
+                    values:
+                      - app
+
+      # --- 安全上下文 (Security Context) ---
+      securityContext:
+        enabled: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+
+      podSecurityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault

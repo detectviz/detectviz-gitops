@@ -1,0 +1,19 @@
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-path
+  labels:
+    app.kubernetes.io/part-of: detectviz-platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+    storageclass.kubernetes.io/is-default-class: "false"
+    storageclass.kubernetes.io/description: |
+      Local Path 動態儲存供應（Master 節點）
+      節點: master-1, master-2, master-3
+      路徑: /var/lib/k8s-storage/*
+      用途: Prometheus, Loki 等觀測性組件
+provisioner: rancher.io/local-path
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete
+allowVolumeExpansion: false
