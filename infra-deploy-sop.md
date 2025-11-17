@@ -920,3 +920,115 @@ kubectl delete pod vault-0 vault-1 vault-2 -n vault
 # 等待 pods 重新創建後再次 unseal
 # (重啟後 Vault 會重新進入 sealed 狀態)
 ```
+
+---
+
+## Phase 5.5: Vault Kubernetes Auth 配置
+
+**目標**: 配置 Vault Kubernetes Auth 和 KV Secrets Engine，為應用部署做準備
+
+**前置條件**: Phase 5 完成，Vault 已初始化並解封
+
+#### 5.5.1 啟用 KV v2 Secrets Engine
+
+```bash
+# 設置 Vault Token
+export VAULT_TOKEN=$(cat vault-keys.json | jq -r '.root_token')
+
+# 啟用 KV v2 secrets engine
+kubectl exec -n vault vault-0 -- env VAULT_TOKEN=$VAULT_TOKEN \
+  vault secrets enable -version=2 -path=secret kv
+
+# 預期輸出:
+# Success! Enabled the kv secrets engine at: secret/
+```
+
+---
+
+#### 5.5.2 啟用並配置 Kubernetes Auth Method
+
+```bash
+# 啟用 Kubernetes auth method
+kubectl exec -n vault vault-0 -- env VAULT_TOKEN=$VAULT_TOKEN \
+  vault auth enable kubernetes
+
+# 配置 Kubernetes auth
+kubectl exec -n vault vault-0 -- env VAULT_TOKEN=$VAULT_TOKEN sh -c \
+  'vault write auth/kubernetes/config \
+    kubernetes_host="https://kubernetes.default.svc:443" \
+    kubernetes_ca_cert=@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
+    token_reviewer_jwt=@/var/run/secrets/kubernetes.io/serviceaccount/token'
+
+# 預期輸出:
+# Success! Enabled kubernetes auth method at: kubernetes/
+# Success! Data written to: auth/kubernetes/config
+```
+
+---
+
+#### 5.5.3 創建 Vault Policy 給 External Secrets Operator
+
+```bash
+# 創建 policy 允許 ESO 讀取所有 secrets
+kubectl exec -n vault vault-0 -- env VAULT_TOKEN=$VAULT_TOKEN sh -c \
+  'cat <<EOF | vault policy write external-secrets -
+path "secret/data/*" {
+  capabilities = ["read", "list"]
+}
+
+path "secret/metadata/*" {
+  capabilities = ["read", "list"]
+}
+EOF'
+
+# 預期輸出:
+# Success! Uploaded policy: external-secrets
+```
+
+---
+
+#### 5.5.4 創建 Kubernetes Auth Role
+
+```bash
+# 創建 role 綁定 ServiceAccount 和 policy
+kubectl exec -n vault vault-0 -- env VAULT_TOKEN=$VAULT_TOKEN \
+  vault write auth/kubernetes/role/external-secrets \
+    bound_service_account_names=external-secrets \
+    bound_service_account_namespaces=external-secrets-system \
+    policies=external-secrets \
+    ttl=24h
+
+# 預期輸出:
+# Success! Data written to: auth/kubernetes/role/external-secrets
+```
+
+---
+
+#### 5.5.5 部署 ClusterSecretStore
+
+```bash
+# 手動創建 ClusterSecretStore (如果 ArgoCD 同步失敗)
+kubectl apply -f argocd/apps/infrastructure/external-secrets-operator/overlays/cluster-secret-store.yaml
+
+# 驗證 ClusterSecretStore 狀態
+kubectl get clustersecretstore vault-backend -o yaml | grep -A5 "status:"
+
+# 預期輸出:
+# status:
+#   capabilities: ReadWrite
+#   conditions:
+#   - message: store validated
+#     reason: Valid
+#     status: "True"
+#     type: Ready
+```
+
+---
+
+**完成 Phase 5.5 後**:
+- ✅ Vault Kubernetes Auth 已啟用並配置
+- ✅ KV v2 Secrets Engine 已啟用在 `secret/` 路徑
+- ✅ External Secrets Operator 可以透過 Kubernetes Auth 訪問 Vault
+- ✅ ClusterSecretStore `vault-backend` 已就緒
+
+**下一步**: 進入 `app-deploy-sop.md` Phase 6.0 初始化應用 secrets
