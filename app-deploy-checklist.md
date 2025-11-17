@@ -1,7 +1,7 @@
 # DetectViz Application Deployment Checklist
 
-**最後更新**: 2025-11-16
-**狀態**: Phase 6 配置完成，等待 Vault secrets 初始化後進行部署驗證
+**最後更新**: 2025-11-17
+**狀態**: Phase 6 配置全部完成（含 Tempo/Alloy/Keycloak Realm/Grafana Dashboards），等待 Vault secrets 初始化後進行部署驗證
 
 ---
 
@@ -139,13 +139,19 @@ monitoring  → Prometheus + Loki + Tempo + Mimir + Alloy Agent
 
 | 功能 | node-exporter | Alloy | 狀態 |
 |------|--------------|-------|------|
-| Host metrics | ✅ | ✅ `local.host_metrics` (未啟用，待補充) | ⚠️ |
+| Host metrics | ✅ | ✅ `prometheus.exporter.unix` | ✅ |
 | Kubernetes Pods logs | ❌ | ✅ `loki.source.kubernetes` | ✅ |
 | Systemd Journal logs | ❌ | ✅ `loki.source.journal` | ✅ |
 | OTLP traces | ❌ | ✅ `otelcol.receiver.otlp` (未啟用) | 🔜 |
 
-**待補充**:
-- [ ] 在 `config.alloy` 中添加 `prometheus.exporter.unix` 或 `local.host_metrics` 配置
+- [x] **Alloy Host Metrics 配置完成**
+  - 文件: `argocd/apps/observability/overlays/config.alloy`
+  - Component: `prometheus.exporter.unix`
+  - Collectors: cpu, cpufreq, diskstats, filesystem, loadavg, meminfo, netdev, netstat, time, uname, vmstat, systemd, processes (共 13 個)
+  - Filesystem filters: 排除虛擬/容器文件系統
+  - Network filters: 排除虛擬網卡 (veth, docker, virbr)
+  - Remote write: 推送到 Prometheus with job="node-exporter" (dashboard 兼容性)
+  - Queue config: 5000 samples/batch, 5s deadline
 
 ---
 
@@ -199,21 +205,21 @@ monitoring  → Prometheus + Loki + Tempo + Mimir + Alloy Agent
   - ServiceMonitor: enabled (所有元件)
   - Schema: TSDB v13 (推薦格式)
 
-### Tempo ⚠️
+### Tempo ✅
 
-- [x] **Tempo 基礎配置**
-  - 文件: `argocd/apps/observability/tempo/overlays/`
+- [x] **Tempo 生產配置完成**
+  - 文件: `argocd/apps/observability/tempo/overlays/values.yaml`
   - Namespace: `monitoring`
   - Version: 1.10.0
   - Storage: 100Gi (topolvm-provisioner) on app-worker nodes
-  - **注意**: 使用 Helm chart 默認配置 + storage patch
-
-- [ ] **待補充: Tempo 生產配置**
-  - 建議創建 `overlays/values.yaml` 明確配置:
-    - Retention policy
-    - OTLP receiver 配置
-    - S3/Minio backend (可選，目前使用 filesystem)
-    - HA replicas 配置
+  - Retention: 30 天 (720h)
+  - OTLP Receivers:
+    - HTTP: 0.0.0.0:4318
+    - gRPC: 0.0.0.0:4317
+  - HA: 2 replicas 配置
+  - Resources: 512Mi-2Gi memory, 200m-1000m CPU
+  - Storage backend: local filesystem (vParquet3 encoding)
+  - Pod anti-affinity: preferredDuringSchedulingIgnoredDuringExecution
 
 ### Mimir ✅
 
@@ -325,19 +331,49 @@ monitoring  → Prometheus + Loki + Tempo + Mimir + Alloy Agent
   - Namespace: `keycloak` ✅
   - Vault path: `secret/data/keycloak/database/password`
 
-### Keycloak Realm 配置 ⚠️
+### Keycloak Realm 配置 ✅
 
-- [ ] **待補充: Keycloak Realm 配置**
+- [x] **Keycloak Realm 配置完成**
+  - 文件: `argocd/apps/identity/keycloak/overlays/realm-detectviz.json`
   - Realm name: `detectviz`
-  - OAuth2 Client for Grafana:
-    - Client ID: `grafana`
-    - Client Secret: 對應 Vault path `secret/data/grafana/oauth/keycloak-client-secret`
-    - Valid Redirect URIs: `https://grafana.detectviz.internal/*`
-    - Roles: `admin`, `editor`, `viewer`
+  - Realm 功能:
+    - Login with email: enabled
+    - User registration: enabled
+    - Email as username: enabled
+    - Default roles: viewer
 
-- [ ] **待補充: Realm GitOps 配置**
-  - 創建 ConfigMap 包含 realm export JSON
-  - 或使用 Keycloak Operator
+- [x] **OAuth2 Clients 配置**
+  - **Grafana Client**:
+    - Client ID: `grafana`
+    - Protocol: openid-connect
+    - Valid Redirect URIs: `https://grafana.detectviz.internal/*`, `https://grafana.detectviz.com/*`
+    - Protocol Mappers: roles (realm role mapper)
+  - **ArgoCD Client**:
+    - Client ID: `argocd`
+    - Protocol: openid-connect
+    - Valid Redirect URIs: `https://argocd.detectviz.internal/auth/callback`, `https://argocd.detectviz.internal/api/dex/callback`
+
+- [x] **Roles 配置**
+  - Realm roles: `admin`, `editor`, `viewer`
+  - Default role: `viewer`
+
+- [x] **Default User 配置**
+  - Username: `admin@detectviz.com`
+  - Email: `admin@detectviz.com`
+  - Roles: admin
+  - Password: `changeme` (temporary, 首次登入必須修改)
+
+- [x] **Realm GitOps 配置**
+  - 文件: `argocd/apps/identity/keycloak/overlays/realm-configmap.yaml`
+  - ConfigMap: `keycloak-realm-detectviz`
+  - 自動導入: 使用 keycloak-config-cli (配置於 values.yaml)
+
+- [x] **Production Values 配置**
+  - 文件: `argocd/apps/identity/keycloak/overlays/values.yaml`
+  - External PostgreSQL: `postgresql-pgpool.postgresql.svc.cluster.local`
+  - HA: 2 replicas
+  - keycloak-config-cli: 啟用自動 realm 導入
+  - Pod anti-affinity: preferredDuringSchedulingIgnoredDuringExecution
 
 ### 部署後驗證 ⚠️
 
@@ -431,12 +467,40 @@ monitoring  → Prometheus + Loki + Tempo + Mimir + Alloy Agent
   - Labels: `prometheus: kube-prometheus-stack`
   - Interval: 30s
 
-### Dashboard Provisioning ⚠️
+### Dashboard Provisioning ✅
 
-- [ ] **待補充: Dashboard as Code**
-  - 創建 ConfigMap 包含 dashboard JSON
-  - 使用 `dashboardProviders` 和 `dashboards` values
-  - 參考: Grafana Helm chart documentation
+- [x] **Dashboard Provisioning 配置完成**
+  - 文件: `argocd/apps/observability/grafana/overlays/dashboard-provider.yaml`
+  - Provider: 3 個 dashboard folders
+    - Platform (Platform 層級監控)
+    - Infrastructure (基礎設施監控)
+    - Applications (應用層級監控)
+  - Auto-discovery: 從 `/etc/grafana/provisioning/dashboards/` 自動加載
+
+- [x] **Dashboard ConfigMap**
+  - 文件: `argocd/apps/observability/grafana/overlays/dashboard-configmap.yaml`
+  - ConfigMap: `grafana-dashboards-platform`
+  - 包含 dashboard: `kubernetes-cluster-overview.json`
+
+- [x] **Kubernetes Cluster Overview Dashboard**
+  - 文件: `argocd/apps/observability/grafana/overlays/dashboards/kubernetes-cluster-overview.json`
+  - UID: `kubernetes-cluster-overview`
+  - Datasource: Mimir (Prometheus)
+  - Panels:
+    - Total Nodes (count kube_node_info)
+    - Unhealthy Nodes (count kube_node_status_condition)
+    - Total Pods (count kube_pod_info)
+    - Unhealthy Pods (count kube_pod_status_phase)
+    - CPU Usage by Node (timeseries)
+    - Memory Usage by Node (timeseries)
+
+- [x] **Dashboard 管理文檔**
+  - 文件: `argocd/apps/observability/grafana/overlays/dashboards/README.md`
+  - 涵蓋內容:
+    - 3 種添加 dashboard 方法 (UI export, grafana.com import, Jsonnet)
+    - 最佳實踐 (UID, datasource, tags, variables)
+    - 驗證和故障排除流程
+    - Dashboard 文件結構說明
 
 ### 部署後驗證 ⚠️
 
@@ -919,15 +983,15 @@ argocd app sync grafana
 - ✅ **Loki 配置完成**: filesystem backend, 30天 retention, HA 配置
 - ✅ **Mimir 配置完成**: S3/Minio backend, HA 配置, buckets 自動創建
 - ✅ **Minio 配置完成**: standalone mode, 100Gi storage, ExternalSecrets 完整配置
-- ⚠️ **待補充**: Tempo 生產配置 (目前使用默認配置 + storage patch)
-- ⚠️ **待補充**: Alloy host metrics 配置 (取代 node-exporter)
-- ⚠️ **待補充**: Keycloak Realm 配置 (OAuth2 client for Grafana)
-- ⚠️ **待補充**: Grafana Dashboard Provisioning as Code
+- ✅ **Tempo 生產配置完成**: OTLP receivers (HTTP/gRPC), 30天 retention, HA 2 replicas, vParquet3 encoding
+- ✅ **Alloy Host Metrics 配置完成**: prometheus.exporter.unix 配置，13 collectors，remote write to Prometheus
+- ✅ **Keycloak Realm 配置完成**: detectviz realm, Grafana/ArgoCD OAuth2 clients, admin/editor/viewer roles, keycloak-config-cli 自動導入
+- ✅ **Grafana Dashboard Provisioning 完成**: 3-folder structure, kubernetes-cluster-overview dashboard, ConfigMap-based GitOps
 - 🔜 **Phase 6.7**: ArgoCD Keycloak SSO 整合 (Phase 6 部署完成後)
 - 🔜 **Phase 6.8**: Grafana 域名遷移 `detectviz.com` (Phase 6 部署完成後)
 - 🔜 **下一步**: 初始化 Vault secrets 後開始部署驗證 (參考 Phase 7)
 
 ---
 
-**最後更新**: 2025-11-17 (新增 Phase 6.7-6.8 SSO 和域名遷移規劃)
+**最後更新**: 2025-11-17 (完成 Tempo/Alloy/Keycloak Realm/Grafana Dashboard 配置)
 **維護**: 隨配置和部署進度持續更新
