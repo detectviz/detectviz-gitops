@@ -63,9 +63,9 @@ pgpool:
   # 暫時使用 soft 以允許在同一節點部署
   podAntiAffinityPreset: soft
 
-  # 覆寫 pgpool image tag（原 tag 4.5.0-debian-11-r3 不存在）
-  image:
-    tag: 4.5.0-debian-11-r0
+  # 移除 image tag 覆寫，使用 Helm chart 預設值
+  # image:
+  #   tag: 4.5.0-debian-11-r0
 
   resources:
     requests:
