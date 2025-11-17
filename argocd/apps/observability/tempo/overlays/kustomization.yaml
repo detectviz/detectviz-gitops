@@ -8,9 +8,7 @@ resources:
 
 helmCharts:
   - name: tempo
+    repo: https://grafana.github.io/helm-charts
+    version: 1.10.0
+    releaseName: tempo
     valuesFile: values.yaml
-
-patches:
-  - path: patch-nodeselector-storage.yaml
-    target:
-      kind: (Deployment|StatefulSet)

@@ -192,6 +192,7 @@ graph TD
 ## 最佳化建議檢查清單 (持續更新中)
 - [ ] Root Application 與 ApplicationSet 為 `Synced`/`Healthy`
 - [ ] Root Application 使用 `platform-bootstrap` AppProject，避免讓具有廣泛權限的 default AppProject 對 bootstrap 與業務應用的存取控制。
+  - `argocd/root-argocd-app.yaml` 的 `spec.project` 必須設為 `platform-bootstrap`。
 - [ ] 使用 ApplicationSet 區分環境 overlay。  
 - [ ] 命名空間具備 `app.kubernetes.io/managed-by=gitops` 與推薦標籤
 - [ ] 所有 `targetRevision` 皆固定為 `main`，禁止使用 `HEAD` 造成不可預期的 commit 漂移。

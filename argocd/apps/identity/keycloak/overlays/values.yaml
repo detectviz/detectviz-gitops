@@ -23,13 +23,15 @@ postgresql:
   enabled: false
 
 externalDatabase:
-  host: postgresql-pgpool.postgresql.svc.cluster.local
+  host: postgresql.postgresql.svc.cluster.local
   port: 5432
   database: keycloak
   user: keycloak
   # password 由 existingSecret 提供
   existingSecret: keycloak-db-creds
   existingSecretPasswordKey: POSTGRES_PASSWORD
+  secretKeys:
+    password: POSTGRES_PASSWORD
 
 # --- 高可用性配置 ---
 replicaCount: 2

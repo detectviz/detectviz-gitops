@@ -80,7 +80,9 @@ spec:
       destination:
         server: https://kubernetes.default.svc
         namespace: "{{namespace}}"
-      syncPolicy: {} # 手動同步 - 需先初始化 Vault secrets
+      syncPolicy:
+        syncOptions:
+          - CreateNamespace=true # 仍維持手動同步，但強制 Argo CD 先建立 namespace
       ignoreDifferences:
         - group: ""
           kind: Secret

@@ -70,6 +70,15 @@ alertmanager:
     limits:
       cpu: 500m
       memory: 512Mi
+  nodeSelector: &appWorkerNodeSelector
+    node-role.kubernetes.io/workload-apps: "true"
+  tolerations: &controlPlaneTolerations
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/master"
+      operator: "Exists"
+      effect: "NoSchedule"
 
 # Ingester (負責接收與寫入指標數據)
 ingester:
@@ -84,6 +93,8 @@ ingester:
     limits:
       cpu: 1000m
       memory: 2Gi
+  nodeSelector: *appWorkerNodeSelector
+  tolerations: *controlPlaneTolerations
 
 # Store Gateway (負責從長期儲存中讀取舊數據)
 store_gateway:
@@ -98,6 +109,8 @@ store_gateway:
     limits:
       cpu: 500m
       memory: 1Gi
+  nodeSelector: *appWorkerNodeSelector
+  tolerations: *controlPlaneTolerations
 
 # Compactor (負責壓縮與合併 TSDB blocks，優化儲存與查詢)
 compactor:
@@ -112,6 +125,8 @@ compactor:
     limits:
       cpu: 500m
       memory: 1Gi
+  nodeSelector: *appWorkerNodeSelector
+  tolerations: *controlPlaneTolerations
 
 # Distributor (接收 Prometheus remote-write 流量的入口)
 distributor:
@@ -123,6 +138,8 @@ distributor:
     limits:
       cpu: 500m
       memory: 512Mi
+  nodeSelector: *appWorkerNodeSelector
+  tolerations: *controlPlaneTolerations
 
 # Querier (執行 PromQL 查詢)
 querier:
@@ -134,6 +151,8 @@ querier:
     limits:
       cpu: 500m
       memory: 1Gi
+  nodeSelector: *appWorkerNodeSelector
+  tolerations: *controlPlaneTolerations
 
 # Query Frontend (查詢隊列與快取)
 query_frontend:
@@ -145,6 +164,8 @@ query_frontend:
     limits:
       cpu: 500m
       memory: 512Mi
+  nodeSelector: *appWorkerNodeSelector
+  tolerations: *controlPlaneTolerations
 
 # --- 可觀測性 (Observability) ---
 # **[關鍵]** 啟用 ServiceMonitor，讓 Prometheus 可以抓取 Mimir 自身的指標。

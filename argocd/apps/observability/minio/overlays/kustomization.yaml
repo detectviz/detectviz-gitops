@@ -5,5 +5,9 @@ resources:
   - ../base
   - externalsecret.yaml
 
-patchesStrategicMerge:
-  - values.yaml
+helmCharts:
+  - name: minio
+    repo: https://charts.min.io/
+    version: "5.0.15"
+    releaseName: minio
+    valuesFile: values.yaml

@@ -77,6 +77,9 @@ pgpool:
 
   # **[關鍵]** 從名為 'detectviz-pgpool-users' 的 Secret 中讀取使用者密碼檔案 (pgpool_passwd)。
   customUsersSecret: detectviz-pgpool-users
+  # 調度到 app-worker 節點，與資料庫層保持一致。
+  nodeSelector:
+    node-role.kubernetes.io/workload-apps: "true"
 
 # --- PostgreSQL (資料庫核心) ---
 postgresql:
@@ -102,11 +105,13 @@ postgresql:
   persistence:
     enabled: true
     storageClass: topolvm-provisioner  # app-worker 節點 TopoLVM (data-vg SSD)
-    size: 10Gi
+    size: 50Gi
 
   # **[關鍵]** 從名為 'detectviz-postgresql-initdb' 的 Secret 中讀取初始化 SQL 腳本。
   # 這些腳本會在資料庫首次創建時執行，用於建立應用程式所需的資料庫、使用者和權限 (例如為 Grafana 創建 'grafana' 資料庫和使用者)。
   initdbScriptsSecret: detectviz-postgresql-initdb
+  nodeSelector:
+    node-role.kubernetes.io/workload-apps: "true"
 
 # --- 可觀測性 (Observability) ---
 metrics:

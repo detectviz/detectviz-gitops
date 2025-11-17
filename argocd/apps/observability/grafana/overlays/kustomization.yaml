@@ -11,6 +11,9 @@ resources:
   - dashboard-provider.yaml
   - dashboard-configmap.yaml
 
-patchesStrategicMerge:
-  - patch-nodeselector.yaml
-  - patch-values.yaml
+helmCharts:
+  - name: grafana
+    repo: https://grafana.github.io/helm-charts
+    version: "7.3.7"
+    releaseName: grafana
+    valuesFile: values.yaml

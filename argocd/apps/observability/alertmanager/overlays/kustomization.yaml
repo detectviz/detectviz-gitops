@@ -4,5 +4,9 @@ kind: Kustomization
 resources:
   - ../base
 
-patchesStrategicMerge:
-  - patch-nodeselector-storage-values.yaml
+helmCharts:
+  - name: alertmanager
+    repo: https://prometheus-community.github.io/helm-charts
+    version: "1.9.0"
+    releaseName: alertmanager
+    valuesFile: values.yaml
