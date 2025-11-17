@@ -264,3 +264,82 @@ loki.write "default" {
     tenant_id = coalesce(env("LOKI_TENANT"), "production")
   }
 }
+
+
+// --- Host Metrics Collection (取代 node-exporter) ---
+// **[關鍵]** 使用 Alloy 的 prometheus.exporter.unix 收集節點指標，完全取代 node-exporter。
+// 參考: https://grafana.com/docs/alloy/latest/reference/components/prometheus.exporter.unix/
+
+prometheus.exporter.unix "node" {
+  // 啟用的收集器 (對應 node-exporter 的功能)
+  set_collectors = [
+    "cpu",           // CPU 使用率
+    "cpufreq",       // CPU 頻率
+    "diskstats",     // 磁碟 I/O 統計
+    "filesystem",    // 文件系統使用率
+    "loadavg",       // 系統負載
+    "meminfo",       // 記憶體使用率
+    "netdev",        // 網路介面統計
+    "netstat",       // 網路連接統計
+    "time",          // 系統時間
+    "uname",         // 系統資訊
+    "vmstat",        // 虛擬記憶體統計
+    "systemd",       // Systemd 單元狀態
+    "processes",     // 進程統計
+  ]
+
+  // Filesystem 收集器配置
+  filesystem {
+    // 忽略的文件系統類型
+    fs_types_exclude = "^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tracefs)$"
+    // 忽略的掛載點
+    mount_points_exclude = "^/(dev|proc|run/credentials/.+|sys|var/lib/docker/.+)($|/)"
+  }
+
+  // Netdev 收集器配置
+  netdev {
+    // 忽略的網路介面 (例如虛擬介面)
+    device_exclude = "^(veth.*|br-.*|docker.*|virbr.*|lo)$"
+  }
+}
+
+// Prometheus scrape 配置 - 抓取 unix exporter 的指標
+prometheus.scrape "node_metrics" {
+  targets = prometheus.exporter.unix.node.targets
+  forward_to = [prometheus.remote_write.default.receiver]
+
+  // 添加靜態標籤
+  clustering {
+    enabled = false
+  }
+}
+
+// Prometheus remote write 配置 - 將指標發送到 Prometheus
+prometheus.remote_write "default" {
+  endpoint {
+    url = "http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090/api/v1/write"
+
+    // 添加外部標籤
+    queue_config {
+      capacity = 10000
+      max_shards = 10
+      min_shards = 1
+      max_samples_per_send = 5000
+      batch_send_deadline = "5s"
+      min_backoff = "30ms"
+      max_backoff = "5s"
+    }
+
+    // 添加環境標籤
+    metadata_config {
+      send = true
+      send_interval = "1m"
+    }
+  }
+
+  external_labels = {
+    cluster     = coalesce(env("CLUSTER_NAME"), "detectviz-production"),
+    environment = "production",
+    job         = "node-exporter",  // 保持與 node-exporter 相同的 job 名稱，確保 dashboard 兼容
+  }
+}

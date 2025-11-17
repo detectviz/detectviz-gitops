@@ -6,4 +6,4 @@ helmCharts:
     repo: https://grafana.github.io/helm-charts
     version: "6.6.4"
     releaseName: loki
-    namespace: monitoring
+    # namespace 由 ApplicationSet destination 決定 (monitoring)

@@ -6,4 +6,4 @@ helmCharts:
     repo: https://charts.min.io/
     version: "5.0.15"
     releaseName: minio
-    namespace: monitoring
+    # namespace 由 ApplicationSet destination 決定 (monitoring)

@@ -69,6 +69,37 @@
 - **使用時機**: Phase 3 - Kube-VIP 高可用性配置驗證
 - **功能**: 模擬節點故障，驗證 VIP 故障轉移
 
+#### `validate-pre-deployment.sh` ✅ **應用部署前驗證**
+- **用途**: 驗證應用部署前的基礎設施就緒狀態
+- **使用時機**: Phase 7.1 - 應用部署前檢查
+- **功能**:
+  - 檢查 ArgoCD ApplicationSet 配置 (List generator)
+  - 驗證 Vault secrets 初始化狀態 (需要 vault CLI)
+  - 檢查 External Secrets Operator 健康狀態
+  - 驗證必要的 StorageClass 存在
+  - 檢查 ClusterSecretStore 配置
+- **依賴**: kubectl, vault (可選)
+- **輸出**: 彩色狀態報告，顯示 PASS/FAIL/WARN
+- **退出碼**: 0=成功, 1=有問題
+
+#### `validate-post-deployment.sh` ✅ **應用部署後驗證**
+- **用途**: 驗證應用部署健康狀態和功能性
+- **使用時機**: Phase 7.2 - 應用部署後驗證
+- **功能**:
+  - 檢查 namespace 創建 (postgresql, keycloak, grafana, monitoring)
+  - 驗證 ExternalSecrets 同步狀態
+  - 檢查 Pod 健康狀態 (Running)
+  - 驗證 Service 可用性
+  - 測試跨 namespace 連接性
+  - 檢查 Ingress 配置
+  - 驗證 PVC 綁定狀態
+  - 應用特定檢查:
+    - PostgreSQL replication 狀態
+    - Minio bucket 創建
+- **依賴**: kubectl
+- **輸出**: 彩色狀態報告，顯示 PASS/FAIL/WARN
+- **退出碼**: 0=成功, 1=有問題
+
 ### 輔助腳本
 
 #### `bootstrap-monitoring-secrets.sh`
@@ -95,6 +126,16 @@ bash .last-node-labels.sh
 
 # VIP 高可用性測試
 ./scripts/test-pod-recovery.sh
+
+# Phase 7: 應用部署驗證
+# 部署前驗證
+./scripts/validate-pre-deployment.sh
+
+# 部署應用 (via ArgoCD)
+argocd app sync postgresql keycloak grafana prometheus loki mimir minio
+
+# 部署後驗證
+./scripts/validate-post-deployment.sh
 ```
 
 ### 自定義參數

@@ -5,3 +5,4 @@ helmCharts:
     repo: https://charts.bitnami.com/bitnami
     version: "19.2.1"
     releaseName: keycloak
+    # namespace 由 ApplicationSet 的 destination.namespace 決定 (keycloak)

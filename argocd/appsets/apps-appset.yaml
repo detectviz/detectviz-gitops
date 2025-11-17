@@ -1,6 +1,6 @@
-# ApplicationSet for P5 applications
-# 使用 Git Generator 偵測 argocd/apps/observability/* 和 argocd/apps/identity/*。
-# syncPolicy 必須是 syncPolicy: {} (手動)，以建立 Vault 初始化的「手動閘門」。
+# ApplicationSet for Application Layer
+# 使用 List Generator 明確定義每個應用的 namespace mapping
+# syncPolicy 設為手動 ({}), 以建立 Vault 初始化的「手動閘門」
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
@@ -8,16 +8,64 @@ metadata:
   namespace: argocd
 spec:
   generators:
-    - git:
-        repoURL: "git@github.com:detectviz/detectviz-gitops.git"
-        revision: HEAD
-        directories:
-          - path: argocd/apps/observability/*
-          - path: argocd/apps/identity/*
+    - list:
+        elements:
+          # Platform Services (獨立 namespace)
+          - name: postgresql
+            path: argocd/apps/observability/postgresql
+            namespace: postgresql
+            category: platform-service
+
+          - name: keycloak
+            path: argocd/apps/identity/keycloak
+            namespace: keycloak
+            category: platform-service
+
+          # Application Layer (獨立 namespace)
+          - name: grafana
+            path: argocd/apps/observability/grafana
+            namespace: grafana
+            category: application
+
+          # Observability Backend (統一 monitoring namespace)
+          - name: prometheus
+            path: argocd/apps/observability/prometheus
+            namespace: monitoring
+            category: observability
+
+          - name: loki
+            path: argocd/apps/observability/loki
+            namespace: monitoring
+            category: observability
+
+          - name: tempo
+            path: argocd/apps/observability/tempo
+            namespace: monitoring
+            category: observability
+
+          - name: mimir
+            path: argocd/apps/observability/mimir
+            namespace: monitoring
+            category: observability
+
+          - name: minio
+            path: argocd/apps/observability/minio
+            namespace: monitoring
+            category: observability
+
+          - name: alertmanager
+            path: argocd/apps/observability/alertmanager
+            namespace: monitoring
+            category: observability
+
   template:
     metadata:
-      name: "{{path.basename}}"
+      name: "{{name}}"
       namespace: argocd
+      labels:
+        app.kubernetes.io/category: "{{category}}"
+      annotations:
+        argocd.argoproj.io/manifest-generate-paths: "{{path}}"
     spec:
       project: default
       source:
@@ -26,5 +74,11 @@ spec:
         path: "{{path}}"
       destination:
         server: https://kubernetes.default.svc
-        namespace: "{{path.basename}}"
-      syncPolicy: {} # 手動同步
+        namespace: "{{namespace}}"
+      syncPolicy: {} # 手動同步 - 需先初始化 Vault secrets
+      ignoreDifferences:
+        - group: ""
+          kind: Secret
+          name: "*"
+          jsonPointers:
+            - /data

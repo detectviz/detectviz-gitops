@@ -1,247 +1,997 @@
-# 整體部署流程完整性檢查
+# DetectViz Application Deployment Checklist
 
+**最後更新**: 2025-11-17
+**狀態**: Phase 6 配置全部完成（含 Tempo/Alloy/Keycloak Realm/Grafana Dashboards），等待 Vault secrets 初始化後進行部署驗證
+
+---
+
+## 目錄
+
+- [架構重構完成](#架構重構完成)
 - [Phase 6: 應用部署](#phase-6-應用部署)
 - [Phase 7: 最終驗證](#phase-7-最終驗證)
+- [Phase 8: Platform Governance](#phase-8-platform-governance-未來實施)
 
-# 架構圖
+---
+
+## ✅ 架構重構完成 (2025-11-16)
+
+**Namespace 架構已按 Platform Engineering 原則重構**：
 
 ```
-Phase 1–5: Infra Bootstrap
-Phase 6: Observability
- ├─ Prometheus
- ├─ Mimir
- ├─ Loki
- ├─ Tempo
- ├─ PostgreSQL
- ├─ Grafana
- └─ Alloy Agent (every K8s Node)   ← 新增
+# Platform Services (獨立 namespace)
+postgresql  → PostgreSQL HA cluster (Platform Service)
+keycloak    → Keycloak SSO/Identity Provider (Platform Service)
 
-Phase 7: Final Verification
+# Application Layer (獨立 namespace)
+grafana     → Grafana UI (visualization + OAuth client)
 
-Phase 8: Platform Governance
- ├─ RBAC
- ├─ Webhook
- ├─ SSO
- ├─ Vault ESO Policies
- └─ Infra Exporters
+# Observability Backend (統一 monitoring namespace)
+monitoring  → Prometheus + Loki + Tempo + Mimir + Alloy Agent
 ```
 
+**安全架構優勢**：
+- ✅ Vault ACL 按 namespace 細粒度隔離
+- ✅ Zero Trust + Least Privilege 合規
+- ✅ 符合 CNCF/EKS/Anthos/OpenShift 最佳實踐
+- ✅ Attack surface 最小化（namespace 隔離）
 
-# Alloy 可以完全取代 node-exporter，修改 Phase 6.1
+**參考文件**：
+- `VAULT_PATH_STRUCTURE.md` - Vault secret 路徑規範
+- `APP_CONFIG_NOTES.md` - 應用配置依賴關係
+- `app-deploy-sop.md` - 部署流程文檔
 
-* 直接產生 Alloy DaemonSet YAML（符合你 monitoring namespace）
+---
 
-* 整合 Prometheus remoteWrite → Mimir
-* 整合 Loki → Gateway
-* 整合 Tempo → OTLP
-* 更新 ApplicationSet 結構
-* 把 Node Exporter、Promtail 相關設定全部抽掉
+# Phase 6: 應用部署
 
-Grafana 官方文件明確：  
-Alloy 內建 host_metrics：
+## 6.0 Vault + ESO
 
-```hcl
-local.host_metrics "system" {
-  scrape_interval = "15s"
-}
-```
+### ClusterSecretStore 配置 ✅
 
-產出的 metrics = **100% Prometheus Node Exporter 等效內容**
+- [x] **ClusterSecretStore 已配置**
+  - 文件: `argocd/apps/infrastructure/external-secrets-operator/overlays/cluster-secret-store.yaml`
+  - Name: `vault-backend`
+  - Vault server: `http://vault.vault.svc.cluster.local:8200`
+  - Auth method: Kubernetes
+  - ServiceAccount: `external-secrets` (namespace: `external-secrets-system`)
 
-1. Metric（主機指標）
+### Vault ACL 隔離設計 ✅
 
-Alloy 內建：
-
-```hcl
-local.host_metrics "system" {
-  scrape_interval = "15s"
-}
-```
-
-
-2. Alloy 提供 log pipelines：
-
-```hcl
-loki.source.file "varlogs" {
-  paths = ["/var/log/*.log"]
-}
-
-loki.process "label" {
-  forward_to = [loki.write.loki.receiver]
-  stage {
-json {}
-  }
-}
-
-loki.write "loki" {
-  endpoint {
-url = "http://loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push"
-  }
-}
-```
-
-3. Alloy 支援三種 trace pipeline：
-
-  1. OTel Trace ingestion
-  2. Tempo native ingestion
-  3. OTel transform + batch + export
-
-
-  範例：
-
-  ```hcl
-  otelcol.receiver.otlp "otlp" {
-    http {}
-    grpc {}
-  }
-
-  otelcol.exporter.otlp "tempo" {
-    endpoint = "tempo.monitoring.svc:4317"
-  }
-
-  otelcol.pipeline.traces "default" {
-    receivers = [otelcol.receiver.otlp.otlp]
-    exporters = [otelcol.exporter.otlp.tempo]
-  }
+- [x] **Vault Path 結構按 namespace 隔離**
   ```
-# 6.0 Vault + ESO
+  secret/postgresql/*     → postgresql namespace only
+  secret/keycloak/*       → keycloak namespace only
+  secret/grafana/*        → grafana namespace only
+  secret/monitoring/*     → monitoring namespace only
+  ```
 
-- [ ] ESO SecretStore 與 ClusterSecretStore 分類：
-  - [ ] keycloak namespace 對應 keycloak store
-  - [ ] grafana namespace 對應 grafana store
-  - [ ] monitoring namespace 對應 monitoring store
+- [x] **ExternalSecret 分布配置**
+  - PostgreSQL: `argocd/apps/observability/postgresql/overlays/externalsecret.yaml` (namespace: `postgresql`)
+  - Keycloak: `argocd/apps/identity/keycloak/overlays/externalsecret-db.yaml` (namespace: `keycloak`)
+  - Grafana Admin: `argocd/apps/observability/grafana/overlays/externalsecret-admin.yaml` (namespace: `grafana`)
+  - Grafana DB: `argocd/apps/observability/grafana/overlays/externalsecret-db.yaml` (namespace: `grafana`)
+  - Grafana OAuth: `argocd/apps/observability/grafana/overlays/externalsecret-oauth.yaml` (namespace: `grafana`)
+  - Minio: `argocd/apps/observability/minio/overlays/externalsecret.yaml` (namespace: `monitoring`)
 
+### 部署前準備 ⚠️
 
-# 6. Observability Stack（Prom/Loki/Tempo/Mimir）
+- [ ] **初始化 Vault Secrets** (參考: `VAULT_PATH_STRUCTURE.md`)
+  ```bash
+  # PostgreSQL secrets
+  vault kv put secret/postgresql/admin \
+    postgres-password="$(openssl rand -base64 32)" \
+    app-password="$(openssl rand -base64 32)" \
+    repmgr-password="$(openssl rand -base64 32)"
 
-- [ ] Prometheus remoteWrite
-- [ ] Loki chunkstore 正確設定
-- [ ] Tempo hint 配置完成
-- [ ] Grafana datasources 已生成
-- [ ] StorageClass 依 namespace 正確分流
-- [ ] Namespace 需統一：
+  # PostgreSQL initdb
+  vault kv put secret/postgresql/initdb \
+    init-grafana-sql="CREATE DATABASE grafana; CREATE USER grafana WITH PASSWORD 'xxx'; GRANT ALL PRIVILEGES ON DATABASE grafana TO grafana;"
 
+  # Keycloak secrets
+  vault kv put secret/keycloak/database password="$(openssl rand -base64 32)"
+
+  # Grafana secrets
+  vault kv put secret/grafana/admin user="admin" password="$(openssl rand -base64 32)"
+  vault kv put secret/grafana/database user="grafana" password="$(openssl rand -base64 32)"
+  vault kv put secret/grafana/oauth keycloak-client-secret="$(openssl rand -base64 32)"
+
+  # Minio secrets
+  vault kv put secret/monitoring/minio \
+    root-user="admin" \
+    root-password="$(openssl rand -base64 32)" \
+    mimir-access-key="mimir" \
+    mimir-secret-key="$(openssl rand -base64 32)"
+  ```
+
+---
+
+## 6.1 Alloy Agent (完全取代 node-exporter)
+
+### Alloy DaemonSet ✅
+
+- [x] **Alloy DaemonSet 已部署**
+  - 文件: `argocd/apps/observability/overlays/daemonset.yaml`
+  - Namespace: `monitoring`
+  - Image: `grafana/alloy:v1.1.0`
+  - PriorityClass: `system-node-critical`
+  - Tolerations: master/control-plane nodes
+
+- [x] **Alloy 配置完整**
+  - 文件: `argocd/apps/observability/overlays/config.alloy`
+  - ✅ Kubernetes Pods 日誌收集 (`loki.source.kubernetes`)
+  - ✅ Systemd Journal 日誌收集 (`loki.source.journal`)
+  - ✅ Loki Gateway 整合 (`http://loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push`)
+  - ✅ 環境標籤: `cluster=detectviz-production`, `environment=production`
+
+- [x] **Alloy RBAC 配置**
+  - 文件: `argocd/apps/observability/overlays/rbac.yaml`
+  - ServiceAccount: `alloy`
+  - ClusterRole: 讀取 pods, namespaces, nodes, endpoints
+  - ClusterRoleBinding: `alloy` → `alloy` (namespace: monitoring)
+
+- [x] **node-exporter 已移除**
+  - 刪除目錄: `argocd/apps/observability/node-exporter/`
+  - Prometheus values: `prometheus-node-exporter.enabled: false`
+  - 註解: Alloy 的 host_metrics 提供等效功能
+
+### Alloy 功能覆蓋 ✅
+
+| 功能 | node-exporter | Alloy | 狀態 |
+|------|--------------|-------|------|
+| Host metrics | ✅ | ✅ `prometheus.exporter.unix` | ✅ |
+| Kubernetes Pods logs | ❌ | ✅ `loki.source.kubernetes` | ✅ |
+| Systemd Journal logs | ❌ | ✅ `loki.source.journal` | ✅ |
+| OTLP traces | ❌ | ✅ `otelcol.receiver.otlp` (未啟用) | 🔜 |
+
+- [x] **Alloy Host Metrics 配置完成**
+  - 文件: `argocd/apps/observability/overlays/config.alloy`
+  - Component: `prometheus.exporter.unix`
+  - Collectors: cpu, cpufreq, diskstats, filesystem, loadavg, meminfo, netdev, netstat, time, uname, vmstat, systemd, processes (共 13 個)
+  - Filesystem filters: 排除虛擬/容器文件系統
+  - Network filters: 排除虛擬網卡 (veth, docker, virbr)
+  - Remote write: 推送到 Prometheus with job="node-exporter" (dashboard 兼容性)
+  - Queue config: 5000 samples/batch, 5s deadline
+
+---
+
+## 6.2 Observability Stack
+
+### Prometheus ✅
+
+- [x] **Prometheus 配置完成**
+  - 文件: `argocd/apps/observability/prometheus/overlays/values.yaml`
+  - Namespace: `monitoring`
+  - Replicas: 2 (HA)
+  - Retention: 15d
+  - StorageClass: `local-path`
+  - Storage: 50Gi
+
+- [x] **remoteWrite to Mimir**
+  - URL: `http://mimir-distributor.monitoring.svc.cluster.local:8080/api/v1/push`
+  - Queue capacity: 20000
+
+- [x] **ServiceMonitor 自動發現**
+  - `podMonitorSelectorNilUsesHelmValues: false`
+  - `serviceMonitorSelectorNilUsesHelmValues: false`
+
+- [x] **External Labels**
+  - `environment: production`
+  - `cluster: detectviz-production`
+
+- [x] **Infrastructure Exporters ServiceMonitors**
+  - IPMI Exporter (lines 152-183)
+  - Proxmox VE Exporter (lines 184-224)
+  - ArgoCD Metrics (lines 225-270)
+
+### Alertmanager ✅
+
+- [x] **Alertmanager 配置**
+  - Replicas: 3 (HA)
+  - StorageClass: `local-path`
+  - Storage: 10Gi
+
+### Loki ✅
+
+- [x] **Loki 完整配置**
+  - 文件: `argocd/apps/observability/loki/overlays/values.yaml`
+  - Namespace: `monitoring`
+  - Storage: filesystem backend (TSDB + filesystem)
+  - Retention: 30 天
+  - HA: 所有元件 2 replicas (distributor, ingester, querier, query_frontend, gateway)
+  - Persistence:
+    - Ingester: 20Gi (local-path)
+    - Compactor: 10Gi (local-path)
+  - ServiceMonitor: enabled (所有元件)
+  - Schema: TSDB v13 (推薦格式)
+
+### Tempo ✅
+
+- [x] **Tempo 生產配置完成**
+  - 文件: `argocd/apps/observability/tempo/overlays/values.yaml`
+  - Namespace: `monitoring`
+  - Version: 1.10.0
+  - Storage: 100Gi (topolvm-provisioner) on app-worker nodes
+  - Retention: 30 天 (720h)
+  - OTLP Receivers:
+    - HTTP: 0.0.0.0:4318
+    - gRPC: 0.0.0.0:4317
+  - HA: 2 replicas 配置
+  - Resources: 512Mi-2Gi memory, 200m-1000m CPU
+  - Storage backend: local filesystem (vParquet3 encoding)
+  - Pod anti-affinity: preferredDuringSchedulingIgnoredDuringExecution
+
+### Mimir ✅
+
+- [x] **Mimir 完整配置**
+  - 文件: `argocd/apps/observability/mimir/overlays/values.yaml`
+  - Namespace: `monitoring`
+  - Storage: S3 backend (Minio)
+  - Minio endpoint: `minio.monitoring.svc.cluster.local:9000`
+  - Buckets: mimir-blocks, mimir-alertmanager, mimir-ruler
+  - HA: 所有元件 2 replicas
+  - Memberlist: gossip protocol for service discovery
+  - PVC: disabled (使用 S3 backend)
+  - ServiceMonitor: enabled
+  - Secret: `minio-mimir-user` (accessKey: mimir, secretKey from Vault)
+
+### Minio ✅
+
+- [x] **Minio 完整配置**
+  - 文件: `argocd/apps/observability/minio/overlays/values.yaml`
+  - Namespace: `monitoring`
+  - Mode: standalone (1 replica)
+  - Storage: 100Gi (topolvm-provisioner) on app-worker nodes
+  - Buckets: 自動創建
+    - mimir-blocks (policy: none)
+    - mimir-ruler (policy: none)
+    - mimir-alertmanager (policy: none)
+  - Users: 自動創建 mimir user (policy: readwrite)
+  - ServiceMonitor: enabled
+  - Resources: 512Mi-2Gi memory, 250m-1000m CPU
+
+- [x] **Minio ExternalSecrets 配置**
+  - 文件: `argocd/apps/observability/minio/overlays/externalsecret.yaml`
+  - Secrets:
+    - `minio-root-credentials`: root-user, root-password
+    - `minio-mimir-user`: accessKey (mimir), secretKey
+  - Vault paths:
+    - `secret/data/monitoring/minio/root-user`
+    - `secret/data/monitoring/minio/root-password`
+    - `secret/data/monitoring/minio/mimir-access-key`
+    - `secret/data/monitoring/minio/mimir-secret-key`
+
+---
+
+## 6.3 PostgreSQL (Platform Service)
+
+### PostgreSQL HA ✅
+
+- [x] **PostgreSQL HA 配置**
+  - 文件: `argocd/apps/observability/postgresql/overlays/values.yaml`
+  - Namespace: `postgresql` ✅
+  - PostgreSQL replicas: 3 (1 primary + 2 standby)
+  - Pgpool replicas: 2
+  - Pod anti-affinity: `hard`
+  - StorageClass: `topolvm-provisioner`
+  - Storage: 10Gi per replica
+
+- [x] **ExternalSecret 配置**
+  - Namespace: `postgresql` ✅
+  - Vault paths:
+    - `secret/data/postgresql/admin/*` (postgres-password, app-password, repmgr-password)
+    - `secret/data/postgresql/initdb/*` (init-grafana-sql)
+
+- [x] **Init Script 配置**
+  - `initdbScriptsSecret: detectviz-postgresql-initdb`
+  - 自動創建 Grafana database
+
+- [x] **ServiceMonitor 配置**
+  - Enabled: true
+  - Namespace: `monitoring` (跨 namespace 監控)
+  - Labels: `prometheus: kube-prometheus-stack`
+
+### 部署後驗證 ⚠️
+
+- [ ] **驗證 PostgreSQL 部署**
+  ```bash
+  kubectl get pods -n postgresql
+  kubectl get pvc -n postgresql
+  kubectl get svc -n postgresql
+
+  # 預期結果:
+  # postgresql-ha-postgresql-0, 1, 2: Running
+  # postgresql-ha-pgpool-0, 1: Running
+  ```
+
+- [ ] **驗證 Replication**
+  ```bash
+  kubectl exec -it postgresql-ha-postgresql-0 -n postgresql -- \
+    psql -U postgres -c "SELECT * FROM pg_stat_replication;"
+  ```
+
+- [ ] **驗證 Grafana Database**
+  ```bash
+  kubectl exec -it postgresql-ha-postgresql-0 -n postgresql -- \
+    psql -U postgres -c "\l" | grep grafana
+  ```
+
+---
+
+## 6.4 Keycloak (Platform Service)
+
+### Keycloak 配置 ✅
+
+- [x] **Keycloak 基礎配置**
+  - 文件: `argocd/apps/identity/keycloak/overlays/`
+  - Namespace: `keycloak` ✅
+  - Chart: bitnami/keycloak 19.2.1
+
+- [x] **ExternalSecret 配置**
+  - Namespace: `keycloak` ✅
+  - Vault path: `secret/data/keycloak/database/password`
+
+### Keycloak Realm 配置 ✅
+
+- [x] **Keycloak Realm 配置完成**
+  - 文件: `argocd/apps/identity/keycloak/overlays/realm-detectviz.json`
+  - Realm name: `detectviz`
+  - Realm 功能:
+    - Login with email: enabled
+    - User registration: enabled
+    - Email as username: enabled
+    - Default roles: viewer
+
+- [x] **OAuth2 Clients 配置**
+  - **Grafana Client**:
+    - Client ID: `grafana`
+    - Protocol: openid-connect
+    - Valid Redirect URIs: `https://grafana.detectviz.internal/*`, `https://grafana.detectviz.com/*`
+    - Protocol Mappers: roles (realm role mapper)
+  - **ArgoCD Client**:
+    - Client ID: `argocd`
+    - Protocol: openid-connect
+    - Valid Redirect URIs: `https://argocd.detectviz.internal/auth/callback`, `https://argocd.detectviz.internal/api/dex/callback`
+
+- [x] **Roles 配置**
+  - Realm roles: `admin`, `editor`, `viewer`
+  - Default role: `viewer`
+
+- [x] **Default User 配置**
+  - Username: `admin@detectviz.com`
+  - Email: `admin@detectviz.com`
+  - Roles: admin
+  - Password: `changeme` (temporary, 首次登入必須修改)
+
+- [x] **Realm GitOps 配置**
+  - 文件: `argocd/apps/identity/keycloak/overlays/realm-configmap.yaml`
+  - ConfigMap: `keycloak-realm-detectviz`
+  - 自動導入: 使用 keycloak-config-cli (配置於 values.yaml)
+
+- [x] **Production Values 配置**
+  - 文件: `argocd/apps/identity/keycloak/overlays/values.yaml`
+  - External PostgreSQL: `postgresql-pgpool.postgresql.svc.cluster.local`
+  - HA: 2 replicas
+  - keycloak-config-cli: 啟用自動 realm 導入
+  - Pod anti-affinity: preferredDuringSchedulingIgnoredDuringExecution
+
+### 部署後驗證 ⚠️
+
+- [ ] **驗證 Keycloak 部署**
+  ```bash
+  kubectl get pods -n keycloak
+  kubectl get svc -n keycloak
+  kubectl get ingress -n keycloak
+  ```
+
+- [ ] **驗證 Keycloak UI 訪問**
+  ```bash
+  curl -k https://keycloak.detectviz.internal
+  ```
+
+- [ ] **配置 OAuth2 Client**
+  - 手動配置或使用 realm import
+
+---
+
+## 6.5 Grafana (Application Layer)
+
+### Grafana HA ✅
+
+- [x] **Grafana HA 配置**
+  - 文件: `argocd/apps/observability/grafana/overlays/values.yaml`
+  - Namespace: `grafana` ✅
+  - Replicas: 2
+  - Resources: 512Mi-1Gi memory, 200m-1000m CPU
+
+- [x] **Pod Anti-Affinity**
+  - Prefer different nodes (soft anti-affinity)
+  - Topology key: `kubernetes.io/hostname`
+
+- [x] **Pod Disruption Budget**
+  - minAvailable: 1
+
+### PostgreSQL Backend ✅
+
+- [x] **Database 配置**
+  - Type: `postgres`
+  - Host: `postgresql-pgpool.postgresql.svc.cluster.local:5432` ✅
+  - Database: `grafana`
+  - User: `grafana`
+  - Secret: `grafana-database` (from ExternalSecret)
+
+### ExternalSecrets ✅
+
+- [x] **ExternalSecrets 配置**
+  - Namespace: `grafana` ✅
+  - Admin: `secret/data/grafana/admin/*` (user, password)
+  - Database: `secret/data/grafana/database/*` (user, password)
+  - OAuth: `secret/data/grafana/oauth/*` (keycloak-client-secret)
+
+### Keycloak OAuth2 整合 ✅
+
+- [x] **OAuth2 配置**
+  - Enabled: true
+  - Provider: Keycloak
+  - Client ID: `grafana`
+  - Client Secret: from `grafana-keycloak-oauth` secret
+  - Auth URL: `https://keycloak.detectviz.internal/realms/detectviz/protocol/openid-connect/auth`
+  - Token URL: `https://keycloak.detectviz.internal/realms/detectviz/protocol/openid-connect/token`
+  - API URL: `https://keycloak.detectviz.internal/realms/detectviz/protocol/openid-connect/userinfo`
+  - Role mapping: `contains(roles[*], 'admin') && 'Admin' || contains(roles[*], 'editor') && 'Editor' || 'Viewer'`
+
+### Datasources ✅
+
+- [x] **Datasources 配置**
+  - Mimir (default): `http://mimir-query-frontend.monitoring.svc.cluster.local:8080/prometheus` ✅
+  - Loki: `http://loki-gateway.monitoring.svc.cluster.local:80` ✅
+  - Alertmanager: `http://prometheus-alertmanager.monitoring.svc.cluster.local:9093` ✅
+
+### Unified Alerting HA ✅
+
+- [x] **Alerting HA 配置**
+  - Enabled: true
+  - HA Listen Address: `$(POD_IP):9094`
+  - HA Advertise Address: `$(POD_IP):9094`
+  - HA Peers: `grafana-alerting.grafana.svc.cluster.local:9094` ✅
+
+- [x] **Headless Service**
+  - Name: `grafana-alerting`
+  - Namespace: `grafana` ✅
+  - Ports: 9094/TCP, 9094/UDP
+
+### ServiceMonitor ✅
+
+- [x] **ServiceMonitor 配置**
+  - Namespace: `grafana` ✅
+  - Labels: `prometheus: kube-prometheus-stack`
+  - Interval: 30s
+
+### Dashboard Provisioning ✅
+
+- [x] **Dashboard Provisioning 配置完成**
+  - 文件: `argocd/apps/observability/grafana/overlays/dashboard-provider.yaml`
+  - Provider: 3 個 dashboard folders
+    - Platform (Platform 層級監控)
+    - Infrastructure (基礎設施監控)
+    - Applications (應用層級監控)
+  - Auto-discovery: 從 `/etc/grafana/provisioning/dashboards/` 自動加載
+
+- [x] **Dashboard ConfigMap**
+  - 文件: `argocd/apps/observability/grafana/overlays/dashboard-configmap.yaml`
+  - ConfigMap: `grafana-dashboards-platform`
+  - 包含 dashboard: `kubernetes-cluster-overview.json`
+
+- [x] **Kubernetes Cluster Overview Dashboard**
+  - 文件: `argocd/apps/observability/grafana/overlays/dashboards/kubernetes-cluster-overview.json`
+  - UID: `kubernetes-cluster-overview`
+  - Datasource: Mimir (Prometheus)
+  - Panels:
+    - Total Nodes (count kube_node_info)
+    - Unhealthy Nodes (count kube_node_status_condition)
+    - Total Pods (count kube_pod_info)
+    - Unhealthy Pods (count kube_pod_status_phase)
+    - CPU Usage by Node (timeseries)
+    - Memory Usage by Node (timeseries)
+
+- [x] **Dashboard 管理文檔**
+  - 文件: `argocd/apps/observability/grafana/overlays/dashboards/README.md`
+  - 涵蓋內容:
+    - 3 種添加 dashboard 方法 (UI export, grafana.com import, Jsonnet)
+    - 最佳實踐 (UID, datasource, tags, variables)
+    - 驗證和故障排除流程
+    - Dashboard 文件結構說明
+
+### 部署後驗證 ⚠️
+
+- [ ] **驗證 Grafana 部署**
+  ```bash
+  kubectl get pods -n grafana
+  kubectl get svc -n grafana
+  kubectl get ingress -n grafana
+  ```
+
+- [ ] **驗證 Grafana UI 訪問**
+  ```bash
+  curl -k https://grafana.detectviz.internal
+  ```
+
+- [ ] **驗證 Keycloak SSO 登入**
+  - 訪問 Grafana UI
+  - 點擊 "Sign in with Keycloak"
+  - 測試登入流程
+
+- [ ] **驗證 Datasources**
+  - Grafana UI → Configuration → Data Sources
+  - Test connection for Mimir, Loki, Alertmanager
+
+- [ ] **驗證跨 Namespace 連接**
+  ```bash
+  # 從 Grafana pod 測試連接
+  kubectl exec -it grafana-0 -n grafana -- \
+    wget -O- postgresql-pgpool.postgresql.svc.cluster.local:5432
+
+  kubectl exec -it grafana-0 -n grafana -- \
+    wget -O- mimir-query-frontend.monitoring.svc.cluster.local:8080/ready
+  ```
+
+---
+
+## 6.6 Namespace 配置完整性
+
+### Helm Chart namespace 移除 ✅
+
+- [x] **所有 Helm Chart 已移除 namespace 硬編碼**
+  - PostgreSQL: `argocd/apps/observability/postgresql/base/kustomization.yaml`
+  - Keycloak: `argocd/apps/identity/keycloak/base/kustomization.yaml`
+  - Grafana: `argocd/apps/observability/grafana/base/kustomization.yaml`
+  - Prometheus: `argocd/apps/observability/prometheus/base/kustomization.yaml`
+  - Loki: `argocd/apps/observability/loki/base/kustomization.yaml`
+  - Tempo: `argocd/apps/observability/tempo/base/kustomization.yaml`
+  - Mimir: `argocd/apps/observability/mimir/base/kustomization.yaml`
+  - Minio: `argocd/apps/observability/minio/base/kustomization.yaml`
+
+### ApplicationSet 配置 ✅
+
+- [x] **ApplicationSet 配置 (已修正)**
+  - 文件: `argocd/appsets/apps-appset.yaml`
+  - Generator: **List generator** (明確指定 namespace mapping)
+  - Sync Policy: manual (需手動同步，建立 Vault 初始化閘門)
+  - ignoreDifferences: Secret data (由 ExternalSecrets 管理)
+
+- [x] **Applications 正確映射**
+
+  **Platform Services (獨立 namespace)**:
+  - `postgresql` → namespace: `postgresql`, category: platform-service
+  - `keycloak` → namespace: `keycloak`, category: platform-service
+
+  **Application Layer (獨立 namespace)**:
+  - `grafana` → namespace: `grafana`, category: application
+
+  **Observability Backend (統一 monitoring namespace)**:
+  - `prometheus` → namespace: `monitoring`, category: observability ✅
+  - `loki` → namespace: `monitoring`, category: observability ✅
+  - `tempo` → namespace: `monitoring`, category: observability ✅
+  - `mimir` → namespace: `monitoring`, category: observability ✅
+  - `minio` → namespace: `monitoring`, category: observability ✅
+  - `alertmanager` → namespace: `monitoring`, category: observability ✅
+
+**✅ 修正完成**: 使用 List generator 明確指定每個應用的 namespace，符合 Platform Engineering 架構設計
+
+---
+
+## 6.7 ArgoCD Keycloak SSO 整合 🔜
+
+**狀態**: 待實施 (Phase 6 部署完成後)
+**參考文件**: `docs/app-guide/sso-domain-migration-plan.md`
+
+### 當前狀態 ⚠️
+
+- [x] **ArgoCD 當前使用 GitHub SSO** (via Dex)
+  - 文件: `argocd/apps/infrastructure/argocd/overlays/argocd-cm.yaml`
+  - Connector: GitHub OAuth App
+  - **需求**: 遷移到 Keycloak 統一身份認證
+
+### 實施步驟 (待執行)
+
+- [ ] **在 Keycloak 創建 ArgoCD Client**
+  - Client ID: `argocd`
+  - Client Protocol: `openid-connect`
+  - Valid Redirect URIs: `https://argocd.detectviz.internal/auth/callback`
+  - Scopes: `openid`, `profile`, `email`, `groups`
+  - 獲取 client secret
+
+- [ ] **儲存 Secret 到 Vault**
+  ```bash
+  vault kv put secret/argocd/oauth \
+    keycloak-client-secret="<從 Keycloak 複製>"
+  ```
+
+- [ ] **配置 ArgoCD Dex Keycloak Connector**
+  - 文件: `argocd/apps/infrastructure/argocd/overlays/argocd-cm.yaml`
+  - 添加 OIDC connector 配置
+  - 保留 GitHub connector 作為備用
+
+- [ ] **創建 ArgoCD ExternalSecret**
+  - 文件: `argocd/apps/infrastructure/argocd/overlays/externalsecret-keycloak.yaml`
+  - 從 Vault 同步 `secret/argocd/oauth`
+
+- [ ] **配置 ArgoCD RBAC**
+  - 文件: `argocd/apps/infrastructure/argocd/overlays/argocd-rbac-cm.yaml`
+  - 映射 Keycloak roles (admin, editor, viewer) 到 ArgoCD roles
+
+### 驗證步驟 (待執行)
+
+- [ ] **測試 Keycloak SSO 登入**
+  ```bash
+  # 訪問 ArgoCD UI
+  open https://argocd.detectviz.internal
+
+  # 點擊 "LOG IN VIA KEYCLOAK SSO"
+  # 驗證重定向到 Keycloak 登入頁面
+  # 驗證登入後回到 ArgoCD
+  ```
+
+- [ ] **驗證 RBAC 權限**
+  ```bash
+  argocd account get-user-info
+  # 檢查 roles 和 groups 映射正確
+  ```
+
+- [ ] **保留 Local Admin 備用**
+  ```bash
+  # 確保 admin 本地帳號仍可使用
+  argocd login argocd.detectviz.internal --username admin
+  ```
+
+**預估時間**: 1.5 小時
+**依賴**: Keycloak 部署完成，Realm 配置完成
+
+---
+
+## 6.8 Grafana 域名遷移 🔜
+
+**狀態**: 待實施 (Phase 6 部署完成後)
+**參考文件**: `docs/app-guide/sso-domain-migration-plan.md`
+
+### 當前狀態 ⚠️
+
+- [x] **Grafana 當前域名**: `grafana.detectviz.internal`
+  - 文件: `argocd/apps/observability/grafana/overlays/values.yaml`
+  - Lines: 219, 386 (GF_SERVER_DOMAIN)
+  - Lines: 419-421 (OAuth URLs)
+  - **需求**: 遷移到 `grafana.detectviz.com`
+
+### 準備工作 (待執行)
+
+- [ ] **配置 DNS**
+  - 選項 A: 公網 DNS (`grafana.detectviz.com` → 公網 IP)
+  - 選項 B: 內網 DNS (`grafana.detectviz.com` → 192.168.0.10)
+  - 選項 C: 本地 hosts 文件 (開發測試)
+
+- [ ] **準備 TLS 證書**
+  - Let's Encrypt (公網可訪問)
+  - 或 Self-signed (內網環境)
+  - cert-manager ClusterIssuer 配置
+
+### 實施步驟 (待執行)
+
+- [ ] **更新 Keycloak OAuth Client**
+  - 編輯 `grafana` Client
+  - 添加 Valid Redirect URI: `https://grafana.detectviz.com/*`
+  - 過渡期保留舊 URI: `https://grafana.detectviz.internal/*`
+
+- [ ] **更新 Grafana 配置**
+  - 文件: `argocd/apps/observability/grafana/overlays/values.yaml`
+  - 修改 `GF_SERVER_DOMAIN`: `grafana.detectviz.com`
+  - 修改 `grafana.ini.server.domain`: `grafana.detectviz.com`
+  - 檢查 OAuth URLs (是否也遷移 Keycloak 域名)
+
+- [ ] **創建 Grafana Ingress**
+  - 文件: `argocd/apps/observability/grafana/overlays/ingress.yaml`
+  - Host: `grafana.detectviz.com`
+  - TLS: cert-manager 自動生成
+  - Annotations: nginx ingress, WebSocket 支持
+
+- [ ] **更新 Kustomization**
+  - 文件: `argocd/apps/observability/grafana/overlays/kustomization.yaml`
+  - 添加 `ingress.yaml` 到 resources
+
+### 驗證步驟 (待執行)
+
+- [ ] **驗證 DNS 解析**
+  ```bash
+  nslookup grafana.detectviz.com
+  # 應解析到正確 IP
+  ```
+
+- [ ] **驗證 Ingress**
+  ```bash
+  kubectl get ingress -n grafana
+  curl -k https://grafana.detectviz.com
+  ```
+
+- [ ] **驗證 Keycloak SSO**
+  - 訪問: `https://grafana.detectviz.com`
+  - 點擊 "Sign in with Keycloak"
+  - 驗證重定向和登入流程
+
+- [ ] **驗證 Grafana 功能**
+  - Datasources 連接正常
+  - Dashboard 訪問正常
+  - Alerting 通知 URL 正確
+
+### 回滾計劃 (預備)
+
+```bash
+# 如果遷移有問題，快速回滾
+git revert <commit-sha>
+git push
+argocd app sync grafana
 ```
-monitoring: prometheus/mimir/loki/tempo
-postgresql: postgresql
-keycloak: keycloak
-grafana: grafana
-```
 
-- [ ] Grafana datasource URL 正確性
-全部指向 `monitoring.svc.cluster.local`  
-必須更新為真實 namespace
+**預估時間**: 1 小時
+**依賴**: DNS 配置完成，cert-manager 運行
 
-- [ ] PostgreSQL（Pgpool + primary/replica）
-- [ ] Keycloak realm export/import（GitOps-friendly）
-- [ ] Grafana OAuth client configuration
-- [ ] Grafana Dashboard Provisioning／Folder As Code
-- [ ] Minio（若要給 Mimir blocks storage）
-- [ ] Mimir S3 backend config
+---
 
-### Phase 8: Platform Governance（平台治理）
-- [ ] Argo CD Webhook（GitHub → ArgoCD）設定
-- [ ] Argo CD Webhook Secret → Vault / ESO 管理
-- [ ] Argo CD RBAC Policy（Admin / Editor / Viewer）
-- [ ] Argo CD Single Sign-On（Keycloak, Dex）
-- [ ] Team-based AppProject + Roles
-- [ ] GitOps Security Hardening（SSH, Token Rotation）
-- [ ] NetworkPolicy
-- [ ] DNS records 需正式定稿
-- [ ] Observability dashboards as code
-- [ ] overlays/base 結構
-- [ ] 具體應用 manifest 完整化
+# Phase 7: 最終驗證
 
+## 7.1 部署前驗證
 
-- [ ] 在 GitHub Repo 設定 https://argocd.detectviz.internal/api/webhook
-- [ ] 測試 push → ArgoCD 是否自動同步
+### ArgoCD 檢查
 
+- [ ] **檢查 ApplicationSet**
+  ```bash
+  kubectl get applicationset apps-appset -n argocd
+  kubectl describe applicationset apps-appset -n argocd
+  ```
 
+- [ ] **檢查自動生成的 Applications**
+  ```bash
+  kubectl get applications -n argocd | grep -E "postgresql|keycloak|grafana|prometheus|loki|tempo|mimir"
+  ```
 
-### 建議做法
+### Vault Secrets 檢查
 
-1. **在 Vault 建立 Secret**
+- [ ] **驗證 Vault secrets 已初始化**
+  ```bash
+  # 檢查 PostgreSQL secrets
+  vault kv get secret/postgresql/admin
+  vault kv get secret/postgresql/initdb
 
-```
-vault kv put argocd/webhook token=<github_webhook_secret>
-```
+  # 檢查 Keycloak secrets
+  vault kv get secret/keycloak/database
 
-2. **在 argocd namespace 使用 ESO 生成 Secret**
+  # 檢查 Grafana secrets
+  vault kv get secret/grafana/admin
+  vault kv get secret/grafana/database
+  vault kv get secret/grafana/oauth
 
-```yaml
-apiVersion: external-secrets.io/v1beta1
-kind: ExternalSecret
-metadata:
-  name: argocd-webhook-secret
-  namespace: argocd
-spec:
-  refreshInterval: 1h
-  secretStoreRef:
-name: detectviz-vault
-kind: SecretStore
-  target:
-name: argocd-webhook
-creationPolicy: Owner
-  data:
-- secretKey: token
-  remoteRef:
-    key: argocd/webhook
-    property: token
-```
+  # 檢查 Minio secrets
+  vault kv get secret/monitoring/minio
+  ```
 
-- [ ] Argo CD values.yaml 中引用此 Secret
+---
 
+## 7.2 部署驗證
 
-### Argo CD RBAC Policy（Admin / Editor / Viewer）
+### Namespace 驗證
 
-你應修改：
+- [ ] **驗證 Namespace 創建**
+  ```bash
+  kubectl get namespaces | grep -E "postgresql|keycloak|grafana|monitoring"
 
-```
-argocd/apps/infrastructure/argocd/overlays/argocd-cm.yaml
-argocd/apps/infrastructure/argocd/overlays/argocd-rbac-cm.yaml
-```
+  # 預期輸出:
+  # postgresql    Active   Xm
+  # keycloak      Active   Xm
+  # grafana       Active   Xm
+  # monitoring    Active   Xm
+  ```
 
-示例：
+### ExternalSecrets 驗證
 
-```yaml
-# argocd-rbac-cm.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-rbac-cm
-  namespace: argocd
-data:
-  policy.csv: |
-g, admin@example.com, role:admin
-g, dev@example.com,   role:editor
-g, viewer@example.com, role:viewer
+- [ ] **驗證 ExternalSecrets 同步**
+  ```bash
+  # PostgreSQL
+  kubectl get externalsecrets -n postgresql
+  kubectl get secrets -n postgresql | grep detectviz
 
-  scopes: "[email]"
-```
+  # Keycloak
+  kubectl get externalsecrets -n keycloak
+  kubectl get secrets -n keycloak | grep keycloak
 
-### RBAC 角色
+  # Grafana
+  kubectl get externalsecrets -n grafana
+  kubectl get secrets -n grafana | grep grafana
 
-- [ ] **Admin**：修改 App、Repo、Project
-- [ ] **Editor**：只能同步 App、不能動專案
-- [ ] **Viewer**：只讀
+  # Monitoring
+  kubectl get externalsecrets -n monitoring
+  kubectl get secrets -n monitoring | grep minio
+  ```
 
+### 應用健康狀態
 
-你也可以添加 Team-Based AppProject：
+- [ ] **驗證所有 Pods Running**
+  ```bash
+  # PostgreSQL
+  kubectl get pods -n postgresql
+  # 預期: postgresql-ha-postgresql-{0,1,2}, postgresql-ha-pgpool-{0,1}
 
-```
-argocd/projects/team-a.yaml
-argocd/projects/team-b.yaml
-```
+  # Keycloak
+  kubectl get pods -n keycloak
+  # 預期: keycloak-0
 
+  # Grafana
+  kubectl get pods -n grafana
+  # 預期: grafana-{0,1}
 
-### 新增：Infrastructure Exporters
-- prometheus-pve-exporter (Proxmox Host)
-- prometheus-ipmi-exporter (K8s Deployment)
+  # Monitoring
+  kubectl get pods -n monitoring
+  # 預期: prometheus, alertmanager, loki, tempo, mimir, alloy, minio pods
+  ```
 
-```
-- [ ] PVE Exporter：直接跑在 Proxmox host（systemd service）
+### 服務連接驗證
 
-- [ ] IPMI Exporter：以 Deployment 方式放在 K8s（monitoring namespace）
+- [ ] **驗證跨 Namespace 服務連接**
+  ```bash
+  # Grafana → PostgreSQL
+  kubectl exec -it grafana-0 -n grafana -- \
+    nc -zv postgresql-pgpool.postgresql.svc.cluster.local 5432
 
-Prometheus Scrape Config 可統一在 Prometheus Helm Values 中 patch path `/monitoring/prometheus/overlays/scrape-config.yaml`。
+  # Grafana → Mimir
+  kubectl exec -it grafana-0 -n grafana -- \
+    wget -O- http://mimir-query-frontend.monitoring.svc.cluster.local:8080/ready
 
+  # Grafana → Loki
+  kubectl exec -it grafana-0 -n grafana -- \
+    wget -O- http://loki-gateway.monitoring.svc.cluster.local:80/ready
+
+  # Prometheus → Mimir
+  kubectl exec -it prometheus-0 -n monitoring -- \
+    wget -O- http://mimir-distributor.monitoring.svc.cluster.local:8080/ready
+  ```
+
+### Ingress 驗證
+
+- [ ] **驗證 Ingress 創建**
+  ```bash
+  kubectl get ingress -A
+
+  # 預期輸出:
+  # NAMESPACE   NAME       CLASS   HOSTS
+  # grafana     grafana    nginx   grafana.detectviz.internal
+  # keycloak    keycloak   nginx   keycloak.detectviz.internal
+  # argocd      argocd     nginx   argocd.detectviz.internal
+  # monitoring  prometheus nginx   prometheus.detectviz.internal
+  ```
+
+- [ ] **驗證 HTTPS 訪問**
+  ```bash
+  curl -k https://grafana.detectviz.internal
+  curl -k https://keycloak.detectviz.internal
+  curl -k https://prometheus.detectviz.internal
+  ```
+
+### 功能驗證
+
+- [ ] **驗證 Grafana OAuth2 登入**
+  1. 訪問 `https://grafana.detectviz.internal`
+  2. 點擊 "Sign in with Keycloak"
+  3. 輸入 Keycloak 用戶憑證
+  4. 驗證成功重定向到 Grafana
+
+- [ ] **驗證 Grafana Datasources**
+  1. Grafana UI → Configuration → Data Sources
+  2. 測試 Mimir 連接
+  3. 測試 Loki 連接
+  4. 測試 Alertmanager 連接
+
+- [ ] **驗證 Prometheus Metrics**
+  1. 訪問 `https://prometheus.detectviz.internal`
+  2. 查詢 `up` metric
+  3. 驗證所有 targets 正常
+
+- [ ] **驗證 Loki Logs**
+  1. Grafana → Explore → Loki
+  2. 查詢: `{namespace="monitoring"}`
+  3. 驗證日誌正常收集
+
+---
+
+# Phase 8: Platform Governance (未來實施)
+
+## 8.1 ArgoCD Webhook
+
+- [ ] **GitHub Webhook 配置**
+  - GitHub Repo Settings → Webhooks
+  - Payload URL: `https://argocd.detectviz.internal/api/webhook`
+  - Content type: `application/json`
+  - Secret: 存儲於 Vault `secret/argocd/webhook/token`
+
+- [ ] **Webhook Secret 管理**
+  - 創建 ExternalSecret 從 Vault 同步
+  - ArgoCD ConfigMap 引用 Secret
+
+- [ ] **測試 Webhook**
+  ```bash
+  git commit -m "test webhook"
+  git push
+  # 驗證 ArgoCD 自動同步
+  ```
+
+---
+
+## 8.2 ArgoCD RBAC
+
+- [ ] **RBAC Policy 配置**
+  - 文件: `argocd/apps/infrastructure/argocd/overlays/argocd-rbac-cm.yaml`
+  - Roles: Admin, Editor, Viewer
+  - Group mapping via Keycloak
+
+- [ ] **Team-based AppProject**
+  - 創建 AppProject for different teams
+  - RBAC 限制每個 team 的訪問範圍
+
+---
+
+## 8.3 NetworkPolicy
+
+- [ ] **Namespace 隔離 NetworkPolicy**
+  - Default deny all ingress/egress
+  - 明確允許跨 namespace 服務通信
+  - 允許 Prometheus scraping
+  - 允許 DNS resolution
+
+---
+
+## 8.4 Infrastructure Exporters
+
+### Proxmox VE Exporter
+
+- [ ] **Proxmox Host systemd service**
+  - 安裝 prometheus-pve-exporter
+  - 配置 systemd service
+  - 暴露 metrics endpoint
+
+### IPMI Exporter
+
+- [ ] **K8s Deployment in monitoring namespace**
+  - 創建 Deployment manifest
+  - 配置 IPMI 連接
+  - ServiceMonitor 配置 (已在 Prometheus values.yaml)
+
+---
+
+## 8.5 Observability Dashboards
+
+- [ ] **Dashboard Provisioning as Code**
+  - 創建 dashboard JSON files
+  - 使用 ConfigMap 或 GitOps sync
+  - Grafana dashboard providers 配置
+
+- [ ] **Folder Structure**
+  - Infrastructure dashboards
+  - Application dashboards
+  - Platform dashboards
+
+---
+
+**狀態總結**:
+- ✅ **Phase 6 配置完成**: 所有 manifests 已正確配置
+- ✅ **ApplicationSet 已修正**: 使用 List generator 明確指定 namespace mapping
+- ✅ **Loki 配置完成**: filesystem backend, 30天 retention, HA 配置
+- ✅ **Mimir 配置完成**: S3/Minio backend, HA 配置, buckets 自動創建
+- ✅ **Minio 配置完成**: standalone mode, 100Gi storage, ExternalSecrets 完整配置
+- ✅ **Tempo 生產配置完成**: OTLP receivers (HTTP/gRPC), 30天 retention, HA 2 replicas, vParquet3 encoding
+- ✅ **Alloy Host Metrics 配置完成**: prometheus.exporter.unix 配置，13 collectors，remote write to Prometheus
+- ✅ **Keycloak Realm 配置完成**: detectviz realm, Grafana/ArgoCD OAuth2 clients, admin/editor/viewer roles, keycloak-config-cli 自動導入
+- ✅ **Grafana Dashboard Provisioning 完成**: 3-folder structure, kubernetes-cluster-overview dashboard, ConfigMap-based GitOps
+- 🔜 **Phase 6.7**: ArgoCD Keycloak SSO 整合 (Phase 6 部署完成後)
+- 🔜 **Phase 6.8**: Grafana 域名遷移 `detectviz.com` (Phase 6 部署完成後)
+- 🔜 **下一步**: 初始化 Vault secrets 後開始部署驗證 (參考 Phase 7)
+
+---
+
+**最後更新**: 2025-11-17 (完成 Tempo/Alloy/Keycloak Realm/Grafana Dashboard 配置)
+**維護**: 隨配置和部署進度持續更新
