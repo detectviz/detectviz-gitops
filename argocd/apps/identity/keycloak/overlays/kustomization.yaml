@@ -1,9 +1,16 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+namespace: keycloak
+
 resources:
   - ../base
   - externalsecret-db.yaml
+  - realm-configmap.yaml
+
+helmCharts:
+  - name: keycloak
+    valuesFile: values.yaml
 
 patchesStrategicMerge:
   - patch-nodeselector-values.yaml

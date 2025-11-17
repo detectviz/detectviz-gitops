@@ -1,0 +1,186 @@
+# Keycloak Production Configuration
+# 本文件為 Keycloak 在生產環境的 Helm Chart Values
+#
+# 參考文件:
+# - Helm Chart 官方文檔: https://github.com/bitnami/charts/tree/main/bitnami/keycloak
+# - Keycloak 官方文檔: https://www.keycloak.org/documentation
+
+# --- 全局配置 ---
+global:
+  storageClass: topolvm-provisioner
+
+# --- Keycloak 配置 ---
+auth:
+  # Admin 用戶名和密碼通過 secret 注入
+  # 不在此處硬編碼
+  createAdminUser: true
+  adminUser: admin
+  # adminPassword 由 existingSecret 提供
+
+# --- 資料庫配置 ---
+postgresql:
+  # 使用外部 PostgreSQL (Platform Service)
+  enabled: false
+
+externalDatabase:
+  host: postgresql-pgpool.postgresql.svc.cluster.local
+  port: 5432
+  database: keycloak
+  user: keycloak
+  # password 由 existingSecret 提供
+  existingSecret: keycloak-db-creds
+  existingSecretPasswordKey: POSTGRES_PASSWORD
+
+# --- 高可用性配置 ---
+replicaCount: 2
+
+# --- 資源配置 ---
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+# --- Realm Import 配置 ---
+# **[關鍵]** 啟用 realm import，從 ConfigMap 導入 detectviz realm
+keycloakConfigCli:
+  enabled: true
+  # 使用 keycloak-config-cli 從 ConfigMap 導入 realm
+  existingConfigmap: keycloak-realm-detectviz
+  # 命令行參數
+  command:
+    - java
+    - -jar
+    - /opt/bitnami/keycloak-config-cli/keycloak-config-cli.jar
+  args:
+    - --keycloak.url=http://localhost:8080
+    - --keycloak.user=$(KEYCLOAK_ADMIN_USER)
+    - --keycloak.password=$(KEYCLOAK_ADMIN_PASSWORD)
+    - --import.files.locations=/config/*
+  # 環境變數
+  env:
+    - name: KEYCLOAK_ADMIN_USER
+      value: admin
+    - name: KEYCLOAK_ADMIN_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: keycloak-admin
+          key: admin-password
+  # 資源配置
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# --- 服務配置 ---
+service:
+  type: ClusterIP
+  http:
+    port: 80
+  https:
+    port: 443
+
+# --- Ingress 配置 (可選) ---
+ingress:
+  enabled: false
+  # 如需啟用外部訪問，配置如下:
+  # ingressClassName: nginx
+  # hostname: keycloak.detectviz.internal
+  # tls: true
+  # annotations:
+  #   cert-manager.io/cluster-issuer: "selfsigned-issuer"
+
+# --- ServiceMonitor ---
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    namespace: keycloak
+    interval: 30s
+    labels:
+      prometheus: kube-prometheus-stack
+      environment: production
+
+# --- 持久化配置 ---
+# Keycloak 本身不需要 PVC (使用外部數據庫)
+persistence:
+  enabled: false
+
+# --- 安全上下文 ---
+containerSecurityContext:
+  enabled: true
+  runAsUser: 1001
+  runAsNonRoot: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  seccompProfile:
+    type: RuntimeDefault
+
+podSecurityContext:
+  enabled: true
+  fsGroup: 1001
+
+# --- 調度策略 ---
+# **[關鍵]** 調度到 app-worker 節點
+nodeSelector:
+  node-role.kubernetes.io/workload-apps: "true"
+
+# **[關鍵]** Pod 反親和性
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - keycloak
+          topologyKey: kubernetes.io/hostname
+
+# --- Pod Disruption Budget ---
+pdb:
+  create: true
+  minAvailable: 1
+
+# --- 額外環境變數 ---
+extraEnvVars:
+  - name: KC_PROXY
+    value: "edge"
+  - name: KC_HOSTNAME_STRICT
+    value: "false"
+  - name: KC_HTTP_ENABLED
+    value: "true"
+  - name: KC_LOG_LEVEL
+    value: "INFO"
+
+# --- 啟動探針 ---
+livenessProbe:
+  enabled: true
+  httpGet:
+    path: /health/live
+    port: http
+  initialDelaySeconds: 300
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+  successThreshold: 1
+
+readinessProbe:
+  enabled: true
+  httpGet:
+    path: /health/ready
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+  successThreshold: 1

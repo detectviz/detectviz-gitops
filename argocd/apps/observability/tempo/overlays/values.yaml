@@ -1,0 +1,232 @@
+# Tempo Production Configuration
+# 本文件為 Grafana Tempo 在生產環境的 Helm Chart Values
+#
+# 參考文件:
+# - Helm Chart 官方文檔: https://github.com/grafana/helm-charts/tree/main/charts/tempo
+# - Tempo 官方文檔: https://grafana.com/docs/tempo/latest/
+
+# --- 全局配置 ---
+tempo:
+  # 搜索配置
+  searchEnabled: true  # 啟用 trace 搜索功能
+
+  # 保留期限配置
+  retention: 720h  # 30 天 (720 小時)
+
+  # 接收器配置
+  receivers:
+    # **[關鍵]** 啟用 OTLP 接收器 (OpenTelemetry Protocol)
+    otlp:
+      protocols:
+        http:
+          enabled: true
+          endpoint: 0.0.0.0:4318
+        grpc:
+          enabled: true
+          endpoint: 0.0.0.0:4317
+
+    # Jaeger 接收器 (可選)
+    jaeger:
+      protocols:
+        thrift_http:
+          enabled: false
+        grpc:
+          enabled: false
+        thrift_binary:
+          enabled: false
+        thrift_compact:
+          enabled: false
+
+    # Zipkin 接收器 (可選)
+    zipkin:
+      enabled: false
+
+  # 存儲配置
+  storage:
+    trace:
+      # **[關鍵]** 使用本地文件系統存儲
+      # 生產環境可考慮切換到 S3/GCS/Azure Blob
+      backend: local
+      local:
+        path: /var/tempo/traces
+
+      # WAL (Write Ahead Log) 配置
+      wal:
+        path: /var/tempo/wal
+
+      # Block 配置
+      block:
+        # 版本
+        version: vParquet3
+        # 編碼
+        encoding: snappy
+
+      # 池配置
+      pool:
+        max_workers: 100
+        queue_depth: 10000
+
+# --- 部署配置 ---
+# **[關鍵]** HA 配置 - 設置多個副本以實現高可用
+replicas: 2
+
+# --- 資源配置 ---
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 2Gi
+
+# --- 持久化存儲 ---
+# **[關鍵]** 啟用持久化，使用 TopoLVM
+persistence:
+  enabled: true
+  storageClassName: topolvm-provisioner  # app-worker 節點 TopoLVM (data-vg SSD)
+  accessModes:
+    - ReadWriteOnce
+  size: 100Gi  # 與 patch-nodeselector-storage.yaml 一致
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+
+# --- 服務配置 ---
+service:
+  type: ClusterIP
+  annotations: {}
+
+# --- ServiceMonitor ---
+# **[關鍵]** 啟用 Prometheus Operator ServiceMonitor
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  labels:
+    prometheus: kube-prometheus-stack
+    environment: production
+
+# --- 安全上下文 ---
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false  # Tempo 需要寫入 /var/tempo
+
+# --- 調度策略 ---
+# **[關鍵]** 調度到 app-worker 節點
+nodeSelector:
+  node-role.kubernetes.io/workload-apps: "true"
+
+# **[關鍵]** Pod 反親和性 - 將副本分散到不同節點
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - tempo
+          topologyKey: kubernetes.io/hostname
+
+# --- 容忍度 ---
+tolerations: []
+
+# --- Pod Disruption Budget ---
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# --- Tempo 配置檔 (tempo.yaml) ---
+# 詳細的 Tempo 配置
+config: |
+  # Tempo 伺服器配置
+  server:
+    http_listen_port: 3200
+    log_level: info
+
+  # 分散式追蹤器配置
+  distributor:
+    receivers:
+      otlp:
+        protocols:
+          http:
+            endpoint: 0.0.0.0:4318
+          grpc:
+            endpoint: 0.0.0.0:4317
+
+  # Ingester 配置
+  ingester:
+    # Trace 完整檢查
+    trace_idle_period: 10s
+    max_block_bytes: 1048576
+    max_block_duration: 5m
+
+  # Compactor 配置
+  compactor:
+    compaction:
+      block_retention: 720h  # 30 天保留
+
+  # 存儲配置
+  storage:
+    trace:
+      backend: local
+      local:
+        path: /var/tempo/traces
+      wal:
+        path: /var/tempo/wal
+      block:
+        version: vParquet3
+        encoding: snappy
+      pool:
+        max_workers: 100
+        queue_depth: 10000
+
+  # 查詢前端配置
+  query_frontend:
+    search:
+      max_duration: 0  # 無限制
+
+  # 覆寫配置 (per-tenant limits)
+  overrides:
+    # 全局默認值
+    defaults:
+      # 每個 trace 的最大 bytes
+      max_bytes_per_trace: 50000000  # 50MB
+      # Ingestion rate limit (traces per second)
+      ingestion_rate_limit_bytes: 15000000  # 15MB/s
+      # Burst size
+      ingestion_burst_size_bytes: 20000000  # 20MB
+
+# --- Ingress (可選) ---
+# 如果需要外部訪問 Tempo Query UI
+ingress:
+  enabled: false
+  # 如需啟用，配置如下:
+  # ingressClassName: nginx
+  # hosts:
+  #   - host: tempo.detectviz.internal
+  #     paths:
+  #       - path: /
+  #         pathType: Prefix
+  # tls:
+  #   - secretName: tempo-tls
+  #     hosts:
+  #       - tempo.detectviz.internal
+
+# --- 環境變數 ---
+extraEnv: []
+
+# --- 額外 volumes 和 volumeMounts ---
+extraVolumes: []
+extraVolumeMounts: []
