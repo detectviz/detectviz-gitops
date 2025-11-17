@@ -1,10 +1,10 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+# Alloy Agent - Unified Observability Agent
+# Replaces node-exporter, collects logs, metrics, and traces
+
 resources:
   - daemonset.yaml
   - rbac.yaml
   - service.yaml
-
-patchesStrategicMerge:
-  - patch-alloy-tolerations.yaml

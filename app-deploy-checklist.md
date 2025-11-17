@@ -111,21 +111,21 @@ monitoring  → Prometheus + Loki + Tempo + Mimir + Alloy Agent
 ### Alloy DaemonSet ✅
 
 - [x] **Alloy DaemonSet 已部署**
-  - 文件: `argocd/apps/observability/overlays/daemonset.yaml`
+  - 文件: `argocd/apps/observability/alloy/base/daemonset.yaml`
   - Namespace: `monitoring`
   - Image: `grafana/alloy:v1.1.0`
   - PriorityClass: `system-node-critical`
   - Tolerations: master/control-plane nodes
 
 - [x] **Alloy 配置完整**
-  - 文件: `argocd/apps/observability/overlays/config.alloy`
+  - 文件: `argocd/apps/observability/alloy/overlays/config.alloy`
   - ✅ Kubernetes Pods 日誌收集 (`loki.source.kubernetes`)
   - ✅ Systemd Journal 日誌收集 (`loki.source.journal`)
   - ✅ Loki Gateway 整合 (`http://loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push`)
   - ✅ 環境標籤: `cluster=detectviz-production`, `environment=production`
 
 - [x] **Alloy RBAC 配置**
-  - 文件: `argocd/apps/observability/overlays/rbac.yaml`
+  - 文件: `argocd/apps/observability/alloy/base/rbac.yaml`
   - ServiceAccount: `alloy`
   - ClusterRole: 讀取 pods, namespaces, nodes, endpoints
   - ClusterRoleBinding: `alloy` → `alloy` (namespace: monitoring)
@@ -145,7 +145,7 @@ monitoring  → Prometheus + Loki + Tempo + Mimir + Alloy Agent
 | OTLP traces | ❌ | ✅ `otelcol.receiver.otlp` (未啟用) | 🔜 |
 
 - [x] **Alloy Host Metrics 配置完成**
-  - 文件: `argocd/apps/observability/overlays/config.alloy`
+  - 文件: `argocd/apps/observability/alloy/overlays/config.alloy`
   - Component: `prometheus.exporter.unix`
   - Collectors: cpu, cpufreq, diskstats, filesystem, loadavg, meminfo, netdev, netstat, time, uname, vmstat, systemd, processes (共 13 個)
   - Filesystem filters: 排除虛擬/容器文件系統

@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Alloy Production Overlays
+namespace: monitoring
+
+resources:
+  - ../base
+
+patchesStrategicMerge:
+  - patch-alloy-tolerations.yaml
+
+configMapGenerator:
+  - name: alloy-config
+    files:
+      - config.alloy
