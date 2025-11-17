@@ -1,0 +1,8 @@
+# Alertmanager 覆寫設定：指定節點親和與持久化儲存，確保告警狀態於節點重啟時維持一致。
+nodeSelector:
+  node-role.kubernetes.io/workload-apps: "true"
+
+persistence:
+  enabled: true
+  storageClass: topolvm-provisioner
+  size: 10Gi

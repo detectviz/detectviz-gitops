@@ -11,6 +11,3 @@ resources:
 helmCharts:
   - name: keycloak
     valuesFile: values.yaml
-
-patchesStrategicMerge:
-  - patch-nodeselector-values.yaml

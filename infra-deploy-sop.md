@@ -612,6 +612,8 @@ ssh ubuntu@192.168.0.11 "sudo kubectl --kubeconfig=/etc/kubernetes/admin.conf ro
 ssh ubuntu@192.168.0.11 "sudo kubectl --kubeconfig=/etc/kubernetes/admin.conf rollout status deployment argocd-repo-server -n argocd --timeout=60s"
 
 # 7. 強制刷新 root application
+> [!NOTE]
+> 在執行刷新前，請先確認 `argocd/root-argocd-app.yaml` 中 `spec.project` 為 `platform-bootstrap`，確保根 Application 受正確 AppProject 權限控管。
 ssh ubuntu@192.168.0.11 "sudo kubectl --kubeconfig=/etc/kubernetes/admin.conf patch application root -n argocd -p='{\"metadata\":{\"annotations\":{\"argocd.argoproj.io/refresh\":\"hard\"}}}' --type=merge"
 
 # 8. 清理臨時檔案

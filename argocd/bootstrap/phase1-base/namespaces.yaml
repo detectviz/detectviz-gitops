@@ -58,3 +58,39 @@ metadata:
     app.kubernetes.io/part-of: detectviz-platform
     app.kubernetes.io/component: secrets-management
     app.kubernetes.io/managed-by: gitops
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: postgresql
+  labels:
+    name: postgresql
+    kubernetes.io/metadata.name: postgresql
+    app.kubernetes.io/name: postgresql
+    app.kubernetes.io/part-of: detectviz-platform
+    app.kubernetes.io/component: platform-service
+    app.kubernetes.io/managed-by: gitops
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: keycloak
+  labels:
+    name: keycloak
+    kubernetes.io/metadata.name: keycloak
+    app.kubernetes.io/name: keycloak
+    app.kubernetes.io/part-of: detectviz-platform
+    app.kubernetes.io/component: platform-service
+    app.kubernetes.io/managed-by: gitops
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: grafana
+  labels:
+    name: grafana
+    kubernetes.io/metadata.name: grafana
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/part-of: detectviz-platform
+    app.kubernetes.io/component: application
+    app.kubernetes.io/managed-by: gitops

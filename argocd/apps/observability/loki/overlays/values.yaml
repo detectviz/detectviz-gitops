@@ -41,21 +41,57 @@ loki:
 
 distributor:
   replicas: 2
+  nodeSelector:
+    node-role.kubernetes.io/workload-apps: "true"
+  tolerations:
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/master"
+      operator: "Exists"
+      effect: "NoSchedule"
 
 ingester:
   replicas: 2
-  # **[關鍵]** 為 ingester 啟用持久化儲存，使用 local-path (master 節點)。
+  # **[關鍵]** 為 ingester 啟用持久化儲存，使用 TopoLVM (app-worker 節點)。
   # ingester 使用 WAL (Write Ahead Log) 來防止數據丟失。
   persistence:
     enabled: true
-    storageClass: "local-path"
-    size: 20Gi
+    storageClass: topolvm-provisioner
+    size: 100Gi
+  nodeSelector:
+    node-role.kubernetes.io/workload-apps: "true"
+  tolerations:
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/master"
+      operator: "Exists"
+      effect: "NoSchedule"
 
 querier:
   replicas: 2
+  nodeSelector:
+    node-role.kubernetes.io/workload-apps: "true"
+  tolerations:
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/master"
+      operator: "Exists"
+      effect: "NoSchedule"
 
 query_frontend:
   replicas: 2
+  nodeSelector:
+    node-role.kubernetes.io/workload-apps: "true"
+  tolerations:
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/master"
+      operator: "Exists"
+      effect: "NoSchedule"
 
 # Gateway 作為統一入口點。
 gateway:
@@ -63,6 +99,15 @@ gateway:
   replicas: 2
   service:
     type: ClusterIP
+  nodeSelector:
+    node-role.kubernetes.io/workload-apps: "true"
+  tolerations:
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/master"
+      operator: "Exists"
+      effect: "NoSchedule"
 
 # Compactor 負責合併小的 chunk 檔案，優化儲存與查詢性能。
 compactor:
@@ -70,8 +115,17 @@ compactor:
   # **[關鍵]** Compactor 也需要持久化儲存來完成其工作。
   persistence:
     enabled: true
-    storageClass: "local-path"
+    storageClass: topolvm-provisioner
     size: 10Gi
+  nodeSelector:
+    node-role.kubernetes.io/workload-apps: "true"
+  tolerations:
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/master"
+      operator: "Exists"
+      effect: "NoSchedule"
 
 # --- 可觀測性 (Observability) ---
 # **[關鍵]** 為 Loki 的所有元件啟用 ServiceMonitor，讓 Prometheus 可以抓取其內部指標。

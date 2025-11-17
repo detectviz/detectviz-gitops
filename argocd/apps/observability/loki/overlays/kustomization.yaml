@@ -4,5 +4,9 @@ kind: Kustomization
 resources:
   - ../base
 
-patchesStrategicMerge:
-  - patch-nodeselector-storage.yaml
+helmCharts:
+  - name: loki
+    repo: https://grafana.github.io/helm-charts
+    version: "6.6.4"
+    releaseName: loki
+    valuesFile: values.yaml

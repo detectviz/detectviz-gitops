@@ -99,7 +99,8 @@ affinity: {}
 tolerations: []
 
 # Node Selector
-nodeSelector: {}
+nodeSelector:
+  node-role.kubernetes.io/workload-apps: "true"
 
 # Grafana 核心配置
 grafana.ini:
