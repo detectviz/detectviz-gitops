@@ -58,6 +58,11 @@ spec:
             namespace: monitoring
             category: observability
 
+          - name: alloy
+            path: argocd/apps/observability/alloy
+            namespace: monitoring
+            category: observability
+
   template:
     metadata:
       name: "{{name}}"

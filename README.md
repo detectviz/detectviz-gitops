@@ -61,28 +61,35 @@ graph LR
 
 ## apps 服務列表
 對應部署階段：[P5]
-- [P5] **keycloak**：OIDC 身份與存取控制
-- [P5] **grafana**：可觀測性與視覺化介面
-- [P5] **tempo**：追蹤資料收集與分析
-- [P5] **loki**：日誌收集與查詢後端（Grafana 整合）
-- [P5] **postgresql**：資料庫服務 (Grafana / Keycloak / Vault backend)
-- [P5] **prometheus-node-exporter**：節點層級 metrics 收集
-- [P5] **alertmanager**：告警通知與規則管理
-- [P5] **grafana-alloy**：統一收集 log、metrics、trace 的代理元件
+
+### Platform Services (獨立 namespace)
+- [P5] **postgresql**：資料庫服務 (Grafana / Keycloak backend，HA 3 replicas)
+- [P5] **keycloak**：OIDC 身份與存取控制 (Realm-based multi-tenancy)
+
+### Application Layer
+- [P5] **grafana**：可觀測性與視覺化介面 (HA 2 replicas，PostgreSQL backend)
+
+### Observability Backend (monitoring namespace)
+- [P5] **prometheus**：指標收集與查詢 (2 replicas，15天 retention)
+- [P5] **loki**：日誌收集與查詢後端 (TSDB v13，30天 retention)
+- [P5] **tempo**：追蹤資料收集與分析 (OTLP receivers，30天 retention)
+- [P5] **mimir**：長期指標儲存 (S3/Minio backend，HA 2 replicas)
+- [P5] **minio**：S3-compatible 物件儲存 (Mimir blocks/ruler/alertmanager)
+- [P5] **alloy**：統一收集 log、metrics、trace 的代理元件 (DaemonSet，取代 node-exporter)
+- [P5] **alertmanager**：告警通知與規則管理 (3 replicas)
 
 ## Grafana 預設整合
 為強化展示一致性，Grafana 透過 Helm 的自動化設定預設載入以下元件：
 - **Datasource Provisioning**：
-  - Prometheus（metrics）
+  - Mimir（long-term metrics，default datasource）
   - Loki（logs）
   - Tempo（traces）
   - Alertmanager（alerts）
 
-- **Dashboard Provisioning**：
-  - Node Exporter Overview
-  - Kubernetes Control Plane
-  - Loki Log Summary
-  - Tempo Trace Map
+- **Dashboard Provisioning** (ConfigMap-based GitOps)：
+  - 3-folder structure: Platform, Infrastructure, Applications
+  - Kubernetes Cluster Overview (nodes, pods, CPU, memory)
+  - 文檔: `argocd/apps/observability/grafana/overlays/dashboards/README.md`
 
 ## 目錄結構
 ```bash
