@@ -1,5 +1,9 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# Base kustomization - empty resources
-# Helm chart is defined in overlays/kustomization.yaml
+helmCharts:
+  - name: postgresql-ha
+    repo: https://charts.bitnami.com/bitnami
+    version: "12.8.2"
+    releaseName: postgresql
+    # namespace 由 ApplicationSet 的 destination.namespace 決定 (postgresql)

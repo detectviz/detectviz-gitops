@@ -4,6 +4,7 @@ kind: Kustomization
 resources:
   - externalsecret.yaml
 
+<<<<<<< HEAD
 helmCharts:
   - name: postgresql-ha
     repo: https://charts.bitnami.com/bitnami
@@ -11,3 +12,7 @@ helmCharts:
     releaseName: postgresql
     valuesFile: values.yaml
     # namespace 由 ApplicationSet 的 destination.namespace 決定 (postgresql)
+=======
+patchesStrategicMerge:
+  - patch-nodeselector-storage.yaml
+>>>>>>> parent of d6ac88e (修正 PostgreSQL kustomization 配置)
