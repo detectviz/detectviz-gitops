@@ -119,8 +119,9 @@ metrics:
   enabled: true
   # **[關鍵]** 啟用 ServiceMonitor，讓 Prometheus Operator 可以自動發現並抓取 PostgreSQL 的指標。
   # 參考: guide/postgresql.md#1.1-PostgreSQL
+  # 暫時禁用 ServiceMonitor，等 Prometheus Operator 部署後再啟用
   serviceMonitor:
-    enabled: true
+    enabled: false
     namespace: monitoring # 指定 ServiceMonitor 應被創建在哪個命名空間。
     interval: 30s
     # 添加額外的標籤，以便 Prometheus 和 Grafana 進行篩選。
