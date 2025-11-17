@@ -49,6 +49,10 @@ spec:
       kind: PriorityClass
     - group: storage.k8s.io
       kind: CSIDriver
+    - group: external-secrets.io
+      kind: ClusterSecretStore
+    - group: networking.k8s.io
+      kind: IngressClass
   namespaceResourceWhitelist:
     - group: argoproj.io
       kind: Application

@@ -6,4 +6,5 @@ helmCharts:
     repo: https://charts.bitnami.com/bitnami
     version: "12.8.2"
     releaseName: postgresql
+    valuesFile: ../overlays/values.yaml
     # namespace 由 ApplicationSet 的 destination.namespace 決定 (postgresql)

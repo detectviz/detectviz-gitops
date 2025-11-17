@@ -5,5 +5,5 @@ resources:
   - ../base
   - externalsecret.yaml
 
-patchesStrategicMerge:
-  - patch-nodeselector-storage.yaml
+# NOTE: nodeSelector and storage are configured via Helm values.yaml
+# No patches needed as they are already set in values.yaml
