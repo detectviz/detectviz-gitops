@@ -5,11 +5,11 @@
 
 ---
 
-## 📋 Vault KV v2 Path 架構
+## Vault KV v2 Path 架構
 
 DetectViz 使用 **按 namespace 隔離** 的 Vault path 結構，實現 Zero Trust 和 Least Privilege：
 
-```
+```bash
 secret/
 ├── postgresql/
 │   ├── admin/
@@ -47,7 +47,7 @@ secret/
 
 ---
 
-## 🔐 Vault ACL Policy 設計
+## Vault ACL Policy 設計
 
 ### 原則：**按 Namespace 隔離**
 
@@ -131,7 +131,7 @@ path "secret/metadata/monitoring/*" {
 
 ---
 
-## 📊 ExternalSecret 映射
+## ExternalSecret 映射
 
 ### PostgreSQL ExternalSecrets
 
@@ -210,7 +210,7 @@ spec:
 
 ---
 
-## 🛡️ 安全優勢
+## 安全優勢
 
 | 安全特性 | 實現方式 |
 |---------|---------|
@@ -222,7 +222,7 @@ spec:
 
 ---
 
-## 🔧 Vault 初始化範例
+## 手動創建 Vault Secrets
 
 ### 1. 初始化 PostgreSQL Secrets
 
@@ -328,7 +328,7 @@ spec:
 
 ---
 
-## 📚 參考文件
+## 參考文件
 
 - External Secrets Operator: https://external-secrets.io/
 - Vault KV v2: https://developer.hashicorp.com/vault/docs/secrets/kv/kv-v2

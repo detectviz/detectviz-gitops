@@ -7,39 +7,9 @@
 
 ## 目錄
 
-- [架構重構完成](#架構重構完成)
 - [Phase 6: 應用部署](#phase-6-應用部署)
 - [Phase 7: 最終驗證](#phase-7-最終驗證)
 - [Phase 8: Platform Governance](#phase-8-platform-governance-未來實施)
-
----
-
-## ✅ 架構重構完成 (2025-11-16)
-
-**Namespace 架構已按 Platform Engineering 原則重構**：
-
-```
-# Platform Services (獨立 namespace)
-postgresql  → PostgreSQL HA cluster (Platform Service)
-keycloak    → Keycloak SSO/Identity Provider (Platform Service)
-
-# Application Layer (獨立 namespace)
-grafana     → Grafana UI (visualization + OAuth client)
-
-# Observability Backend (統一 monitoring namespace)
-monitoring  → Prometheus + Loki + Tempo + Mimir + Alloy Agent
-```
-
-**安全架構優勢**：
-- ✅ Vault ACL 按 namespace 細粒度隔離
-- ✅ Zero Trust + Least Privilege 合規
-- ✅ 符合 CNCF/EKS/Anthos/OpenShift 最佳實踐
-- ✅ Attack surface 最小化（namespace 隔離）
-
-**參考文件**：
-- `VAULT_PATH_STRUCTURE.md` - Vault secret 路徑規範
-- `APP_CONFIG_NOTES.md` - 應用配置依賴關係
-- `app-deploy-sop.md` - 部署流程文檔
 
 ---
 
@@ -76,33 +46,7 @@ monitoring  → Prometheus + Loki + Tempo + Mimir + Alloy Agent
 
 ### 部署前準備 ⚠️
 
-- [ ] **初始化 Vault Secrets** (參考: `VAULT_PATH_STRUCTURE.md`)
-  ```bash
-  # PostgreSQL secrets
-  vault kv put secret/postgresql/admin \
-    postgres-password="$(openssl rand -base64 32)" \
-    app-password="$(openssl rand -base64 32)" \
-    repmgr-password="$(openssl rand -base64 32)"
-
-  # PostgreSQL initdb
-  vault kv put secret/postgresql/initdb \
-    init-grafana-sql="CREATE DATABASE grafana; CREATE USER grafana WITH PASSWORD 'xxx'; GRANT ALL PRIVILEGES ON DATABASE grafana TO grafana;"
-
-  # Keycloak secrets
-  vault kv put secret/keycloak/database password="$(openssl rand -base64 32)"
-
-  # Grafana secrets
-  vault kv put secret/grafana/admin user="admin" password="$(openssl rand -base64 32)"
-  vault kv put secret/grafana/database user="grafana" password="$(openssl rand -base64 32)"
-  vault kv put secret/grafana/oauth keycloak-client-secret="$(openssl rand -base64 32)"
-
-  # Minio secrets
-  vault kv put secret/monitoring/minio \
-    root-user="admin" \
-    root-password="$(openssl rand -base64 32)" \
-    mimir-access-key="mimir" \
-    mimir-secret-key="$(openssl rand -base64 32)"
-  ```
+- [ ] **6.0 初始化 Vault Secrets** (參考: `VAULT_PATH_STRUCTURE.md`)
 
 ---
 
@@ -294,27 +238,10 @@ monitoring  → Prometheus + Loki + Tempo + Mimir + Alloy Agent
 ### 部署後驗證 ⚠️
 
 - [ ] **驗證 PostgreSQL 部署**
-  ```bash
-  kubectl get pods -n postgresql
-  kubectl get pvc -n postgresql
-  kubectl get svc -n postgresql
-
-  # 預期結果:
-  # postgresql-ha-postgresql-0, 1, 2: Running
-  # postgresql-ha-pgpool-0, 1: Running
-  ```
 
 - [ ] **驗證 Replication**
-  ```bash
-  kubectl exec -it postgresql-ha-postgresql-0 -n postgresql -- \
-    psql -U postgres -c "SELECT * FROM pg_stat_replication;"
-  ```
-
+ 
 - [ ] **驗證 Grafana Database**
-  ```bash
-  kubectl exec -it postgresql-ha-postgresql-0 -n postgresql -- \
-    psql -U postgres -c "\l" | grep grafana
-  ```
 
 ---
 
@@ -378,17 +305,7 @@ monitoring  → Prometheus + Loki + Tempo + Mimir + Alloy Agent
 ### 部署後驗證 ⚠️
 
 - [ ] **驗證 Keycloak 部署**
-  ```bash
-  kubectl get pods -n keycloak
-  kubectl get svc -n keycloak
-  kubectl get ingress -n keycloak
-  ```
-
 - [ ] **驗證 Keycloak UI 訪問**
-  ```bash
-  curl -k https://keycloak.detectviz.internal
-  ```
-
 - [ ] **配置 OAuth2 Client**
   - 手動配置或使用 realm import
 

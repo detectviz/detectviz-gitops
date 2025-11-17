@@ -38,13 +38,13 @@
 
 ### 6.0 Vault Secrets 初始化（必須先執行）
 
-**🔐 重要**: 本項目使用 **Vault + ExternalSecrets Operator (ESO)** 管理所有應用 Secrets。
+**重要**: 本項目使用 **Vault + ExternalSecrets Operator (ESO)** 管理所有應用 Secrets。
 
 #### Vault Secret 路徑結構
 
-```
+```bash
 secret/
-├── postgresql/          → PostgreSQL namespace
+├── postgresql/         → PostgreSQL namespace
 │   ├── admin/          # postgres-password, app-password, repmgr-password
 │   └── initdb/         # init-grafana-sql
 ├── keycloak/           → Keycloak namespace
@@ -212,7 +212,7 @@ sleep 30 && kubectl get applications -n argocd
 
 **重要**: 應用之間有依賴關係，必須按以下順序部署：
 
-```
+```bash
 階段 1: Platform Services (獨立 namespace)
   └─ postgresql (namespace: postgresql)
        ├─ HA 3 replicas + Pgpool 2 replicas
@@ -525,7 +525,7 @@ kubectl get configmap alloy-config -n monitoring -o yaml
 
 ---
 
-### 6.5 Application Layer
+### 6.5 Grafana
 
 #### 6.5.1 部署 Grafana
 
@@ -639,7 +639,7 @@ kubectl logs -n grafana grafana-0 | grep -i "alerting\|ha"
 
 ---
 
-### 6.6 部署驗證
+### 6.6 部署驗證所有 Applications 
 
 #### 6.6.1 檢查所有 Applications
 
