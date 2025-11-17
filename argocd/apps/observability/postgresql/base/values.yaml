@@ -57,9 +57,15 @@ global:
 pgpool:
   # **[關鍵]** 設定為 2 個副本，確保連線池層的高可用。
   # 參考: guide/postgresql.md#1.1-PostgreSQL
-  replicaCount: 2
+  # 暫時設為 1 個副本以加速測試部署
+  replicaCount: 1
   # **[關鍵]** 使用 'hard' 反親和性，強制 Pgpool Pod 被調度到不同的物理節點上，防止單點故障。
-  podAntiAffinityPreset: hard
+  # 暫時使用 soft 以允許在同一節點部署
+  podAntiAffinityPreset: soft
+
+  # 覆寫 pgpool image tag（原 tag 4.5.0-debian-11-r3 不存在）
+  image:
+    tag: 4.5.0-debian-11-r0
 
   resources:
     requests:
@@ -70,8 +76,9 @@ pgpool:
       memory: 512Mi
 
   # Pgpool 也需要持久化儲存來保存其配置和日誌。
+  # 暫時禁用以加速測試部署
   persistence:
-    enabled: true
+    enabled: false
     storageClass: topolvm-provisioner  # app-worker 節點 TopoLVM
     size: 1Gi
 
@@ -85,9 +92,11 @@ pgpool:
 postgresql:
   # **[關鍵]** 設定為 3 個副本 (1 個主節點 Primary, 2 個備節點 Read Replicas)，實現資料庫的高可用與讀寫分離。
   # 參考: guide/postgresql.md#1.1-PostgreSQL
-  replicaCount: 3
+  # 暫時設為 1 個副本以加速測試部署
+  replicaCount: 1
   # **[關鍵]** 同樣使用 'hard' 反親和性，確保資料庫的多個副本分散在不同的物理節點上。
-  podAntiAffinityPreset: hard
+  # 暫時使用 soft 以允許在同一節點部署
+  podAntiAffinityPreset: soft
 
   resources:
     requests:
@@ -102,8 +111,9 @@ postgresql:
     enabled: true
 
   # **[關鍵]** 為 PostgreSQL 啟用持久化儲存。
+  # 暫時禁用以加速測試部署
   persistence:
-    enabled: true
+    enabled: false
     storageClass: topolvm-provisioner  # app-worker 節點 TopoLVM (data-vg SSD)
     size: 50Gi
 
