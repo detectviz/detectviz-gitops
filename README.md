@@ -78,6 +78,53 @@ graph LR
 - [P5] **alloy**：統一收集 log、metrics、trace 的代理元件 (DaemonSet，取代 node-exporter)
 - [P5] **alertmanager**：告警通知與規則管理 (3 replicas)
 
+### ApplicationSet 與 overlay 入口
+為符合《DetectViz Platform Constitution》對 base/overlay 分離的要求，`apps-appset` 會直接載入各應用的 overlay 目錄：
+
+| Application | ApplicationSet `spec.generators.list[].path` |
+|-------------|----------------------------------------------|
+| postgresql (production) | `argocd/apps/observability/postgresql/overlays/production` |
+| keycloak | `argocd/apps/identity/keycloak/overlays` |
+| grafana | `argocd/apps/observability/grafana/overlays` |
+| prometheus | `argocd/apps/observability/prometheus/overlays` |
+| loki | `argocd/apps/observability/loki/overlays` |
+| tempo | `argocd/apps/observability/tempo/overlays` |
+| mimir | `argocd/apps/observability/mimir/overlays` |
+| minio | `argocd/apps/observability/minio/overlays` |
+| alloy | `argocd/apps/observability/alloy/overlays` |
+| alertmanager | `argocd/apps/observability/alertmanager/overlays` |
+
+> [!TIP]
+> 新增觀測類或身分服務時，請先建立 `base/` 與 `overlays/`，並讓 ApplicationSet 指向 overlay 路徑，以避免 Argo CD 生成空白 manifests。
+
+#### PostgreSQL overlay profiles
+
+- `overlays/production`：預設由 ApplicationSet 掛載，提供 `pgpool` 2 副本 + `postgresql` 3 副本、TopoLVM 永久磁碟（10Gi/Replica）與啟用 ServiceMonitor。
+- `overlays/test`：僅用於短期功能驗證，內容參照 `values.test.yaml`（單副本、關閉 PVC 與 ServiceMonitor）。
+
+若需在 CI/臨時環境使用測試 profile，請：
+
+1. 將 `apps-appset` 中 `postgresql` 的 `path` 暫時改為 `argocd/apps/observability/postgresql/overlays/test`。
+2. 執行 `kustomize build --enable-helm argocd/apps/observability/postgresql/overlays/test` 確認生成 manifests。
+3. 完成測試後恢復 `path` 為 `.../overlays/production`，並再次同步 PostgreSQL 應用。
+
+### Infrastructure ApplicationSet 入口
+`infra-appset` 使用 Git Generator 掃描 `argocd/apps/infrastructure/*`。為了在維持原有路徑的前提下載入 overlay（Helm values、ExternalSecret、patches），每個基礎設施目錄都新增了根層 `kustomization.yaml`，內容只有 `resources: - overlays` 與命名空間宣告：
+
+| 應用 | ApplicationSet 入口 | overlay 來源 |
+|------|---------------------|--------------|
+| infra-argocd | `argocd/apps/infrastructure/argocd` | `argocd/apps/infrastructure/argocd/overlays` |
+| infra-cert-manager | `argocd/apps/infrastructure/cert-manager` | `argocd/apps/infrastructure/cert-manager/overlays` |
+| infra-external-secrets-operator | `argocd/apps/infrastructure/external-secrets-operator` | `argocd/apps/infrastructure/external-secrets-operator/overlays` |
+| infra-ingress-nginx | `argocd/apps/infrastructure/ingress-nginx` | `argocd/apps/infrastructure/ingress-nginx/overlays` |
+| infra-kube-vip | `argocd/apps/infrastructure/kube-vip` | `argocd/apps/infrastructure/kube-vip/overlays` |
+| infra-local-path-provisioner | `argocd/apps/infrastructure/local-path-provisioner` | `argocd/apps/infrastructure/local-path-provisioner/overlays` |
+| infra-metallb | `argocd/apps/infrastructure/metallb` | `argocd/apps/infrastructure/metallb/overlays` |
+| infra-topolvm | `argocd/apps/infrastructure/topolvm` | `argocd/apps/infrastructure/topolvm/overlays` |
+| infra-vault | `argocd/apps/infrastructure/vault` | `argocd/apps/infrastructure/vault/overlays` |
+
+> 在新增基礎設施元件時，請複製同樣的結構，並執行 `kustomize build --enable-helm argocd/apps/infrastructure/<component>` 驗證根層入口確實載入 overlay。若 Helm Chart 需要存取外部網路而環境受限，請在 PR 測試結果中紀錄替代驗證方式。
+
 ## Grafana 預設整合
 為強化展示一致性，Grafana 透過 Helm 的自動化設定預設載入以下元件：
 - **Datasource Provisioning**：

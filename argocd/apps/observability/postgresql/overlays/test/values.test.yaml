@@ -1,0 +1,33 @@
+# 測試環境降規設定（僅供短期功能驗證使用）
+# - 單副本 Pgpool / PostgreSQL
+# - 停用 PVC（無法保留資料，勿用於長期）
+# - 停用 ServiceMonitor（避免多餘告警）
+
+fullnameOverride: postgresql
+
+global:
+  postgresql:
+    existingSecret: detectviz-postgresql-admin
+  pgpool:
+    existingSecret: detectviz-postgresql-admin
+
+pgpool:
+  replicaCount: 1
+  podAntiAffinityPreset: soft
+  customUsersSecret: detectviz-pgpool-users
+  persistence:
+    enabled: false
+
+postgresql:
+  replicaCount: 1
+  podAntiAffinityPreset: soft
+  volumePermissions:
+    enabled: true
+  persistence:
+    enabled: false
+  initdbScriptsSecret: detectviz-postgresql-initdb
+
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: false

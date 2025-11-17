@@ -218,6 +218,12 @@ kubectl patch application root -n argocd \
 sleep 30 && kubectl get applications -n argocd
 ```
 
+> [!NOTE]
+> `apps-appset` 目前直接指定各應用的 overlay 目錄（例：`argocd/apps/observability/grafana/overlays`）。如此可確保 overlay 中的 Helm values、ExternalSecret 及額外資源全數被載入。若需要新增服務，請務必：
+> 1. 建立 `base/` 與 `overlays/` 的 kustomization 結構。
+> 2. 將新的 ApplicationSet `path` 指向 overlay。
+> 3. 在提交前執行 `kustomize build --enable-helm <overlay-path>`，確認輸出完整且無錯誤。
+
 ---
 
 ### 6.2 部署順序說明
@@ -266,7 +272,10 @@ sleep 30 && kubectl get applications -n argocd
 
 **優先級**: 🔴 最高（被 keycloak 和 grafana 依賴）
 **Namespace**: `postgresql`
-**配置**: HA 3 replicas, Pgpool 2 replicas, 10Gi storage per replica
+**配置**: HA 3 replicas, Pgpool 2 replicas, 10Gi storage per replica（TopoLVM `topolvm-provisioner`）
+**Helm values**:
+- Production（預設）：`argocd/apps/observability/postgresql/base/values.yaml`，由 `overlays/production/kustomization.yaml` 掛載。
+- Test（臨時降規）：`argocd/apps/observability/postgresql/overlays/test/values.test.yaml`，僅在 CI/PoC 期間手動將 ApplicationSet `path` 改為 `.../overlays/test` 後使用，完成後務必改回 Production 以避免單點部署。
 
 ```bash
 # 同步 PostgreSQL
@@ -280,6 +289,7 @@ kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=postgresql-ha -
 kubectl get pods -n postgresql
 kubectl get svc -n postgresql
 kubectl get pvc -n postgresql
+kubectl get servicemonitor -n monitoring -l app.kubernetes.io/name=postgresql-ha
 ```
 
 **預期結果**:
@@ -310,8 +320,9 @@ kubectl exec -it postgresql-ha-postgresql-0 -n postgresql -- \
 
 **故障排除**:
 - Pods 一直 Pending: 檢查 PVC 綁定狀態 `kubectl get pvc -n postgresql`
-- PVC 一直 Pending: 檢查 TopoLVM `kubectl get pods -n topolvm-system`
+- PVC 一直 Pending: 檢查 TopoLVM `kubectl get pods -n topolvm-system` 與 `kubectl get storageclass topolvm-provisioner`
 - Replication 失敗: 檢查 logs `kubectl logs postgresql-ha-postgresql-1 -n postgresql`
+- 沒有指標: 確認 ServiceMonitor `kubectl describe servicemonitor postgresql-ha-postgresql -n monitoring`
 
 ---
 
