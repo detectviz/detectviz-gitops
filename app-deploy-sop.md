@@ -17,9 +17,21 @@
   - [6.1 前置檢查](#61-前置檢查)
   - [6.2 部署順序說明](#62-部署順序說明)
   - [6.3 Platform Services](#63-platform-services)
+    - [6.3.1 部署 PostgreSQL](#631-部署-postgresql)
+    - [6.3.2 部署 Keycloak](#632-部署-keycloak)
   - [6.4 Observability Backend](#64-observability-backend)
+    - [6.4.1 部署 Minio](#641-部署-minio-s3-storage)
+    - [6.4.2 部署 Mimir](#642-並行部署-observability-stack)
+    - [6.4.3 驗證 Observability Stack](#643-驗證-observability-stack)
   - [6.5 Application Layer](#65-application-layer)
-  - [6.6 部署驗證](#66-部署驗證)
+    - [6.5.1 部署 Grafana](#651-部署-grafana)
+  - [6.6 部署驗證所有 Applications](#66-部署驗證所有-applications)
+    - [6.6.1 檢查所有 Applications](#661-檢查所有-applications)
+    - [6.6.2 檢查所有 Pods](#662-檢查所有-pods)
+    - [6.6.3 檢查 Services 和 Ingress](#663-檢查-services-和-ingress)
+    - [6.6.4 服務訪問 URLs](#664-服務訪問-urls)
+    - [6.6.5 驗證跨 Namespace 連接](#665-驗證跨-namespace-連接)
+    - [6.6.6 常見問題處理](#666-常見問題處理)
 - [Phase 7: 最終驗證](#phase-7-最終驗證)
 
 ---
@@ -525,7 +537,7 @@ kubectl get configmap alloy-config -n monitoring -o yaml
 
 ---
 
-### 6.5 Grafana
+### 6.5 Application Layer
 
 #### 6.5.1 部署 Grafana
 

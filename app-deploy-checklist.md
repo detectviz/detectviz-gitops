@@ -497,160 +497,6 @@
 
 ---
 
-## 6.7 ArgoCD Keycloak SSO 整合 🔜
-
-**狀態**: 待實施 (Phase 6 部署完成後)
-**參考文件**: `docs/app-guide/sso-domain-migration-plan.md`
-
-### 當前狀態 ⚠️
-
-- [x] **ArgoCD 當前使用 GitHub SSO** (via Dex)
-  - 文件: `argocd/apps/infrastructure/argocd/overlays/argocd-cm.yaml`
-  - Connector: GitHub OAuth App
-  - **需求**: 遷移到 Keycloak 統一身份認證
-
-### 實施步驟 (待執行)
-
-- [ ] **在 Keycloak 創建 ArgoCD Client**
-  - Client ID: `argocd`
-  - Client Protocol: `openid-connect`
-  - Valid Redirect URIs: `https://argocd.detectviz.internal/auth/callback`
-  - Scopes: `openid`, `profile`, `email`, `groups`
-  - 獲取 client secret
-
-- [ ] **儲存 Secret 到 Vault**
-  ```bash
-  vault kv put secret/argocd/oauth \
-    keycloak-client-secret="<從 Keycloak 複製>"
-  ```
-
-- [ ] **配置 ArgoCD Dex Keycloak Connector**
-  - 文件: `argocd/apps/infrastructure/argocd/overlays/argocd-cm.yaml`
-  - 添加 OIDC connector 配置
-  - 保留 GitHub connector 作為備用
-
-- [ ] **創建 ArgoCD ExternalSecret**
-  - 文件: `argocd/apps/infrastructure/argocd/overlays/externalsecret-keycloak.yaml`
-  - 從 Vault 同步 `secret/argocd/oauth`
-
-- [ ] **配置 ArgoCD RBAC**
-  - 文件: `argocd/apps/infrastructure/argocd/overlays/argocd-rbac-cm.yaml`
-  - 映射 Keycloak roles (admin, editor, viewer) 到 ArgoCD roles
-
-### 驗證步驟 (待執行)
-
-- [ ] **測試 Keycloak SSO 登入**
-  ```bash
-  # 訪問 ArgoCD UI
-  open https://argocd.detectviz.internal
-
-  # 點擊 "LOG IN VIA KEYCLOAK SSO"
-  # 驗證重定向到 Keycloak 登入頁面
-  # 驗證登入後回到 ArgoCD
-  ```
-
-- [ ] **驗證 RBAC 權限**
-  ```bash
-  argocd account get-user-info
-  # 檢查 roles 和 groups 映射正確
-  ```
-
-- [ ] **保留 Local Admin 備用**
-  ```bash
-  # 確保 admin 本地帳號仍可使用
-  argocd login argocd.detectviz.internal --username admin
-  ```
-
-**預估時間**: 1.5 小時
-**依賴**: Keycloak 部署完成，Realm 配置完成
-
----
-
-## 6.8 Grafana 域名遷移 🔜
-
-**狀態**: 待實施 (Phase 6 部署完成後)
-**參考文件**: `docs/app-guide/sso-domain-migration-plan.md`
-
-### 當前狀態 ⚠️
-
-- [x] **Grafana 當前域名**: `grafana.detectviz.internal`
-  - 文件: `argocd/apps/observability/grafana/overlays/values.yaml`
-  - Lines: 219, 386 (GF_SERVER_DOMAIN)
-  - Lines: 419-421 (OAuth URLs)
-  - **需求**: 遷移到 `grafana.detectviz.com`
-
-### 準備工作 (待執行)
-
-- [ ] **配置 DNS**
-  - 選項 A: 公網 DNS (`grafana.detectviz.com` → 公網 IP)
-  - 選項 B: 內網 DNS (`grafana.detectviz.com` → 192.168.0.10)
-  - 選項 C: 本地 hosts 文件 (開發測試)
-
-- [ ] **準備 TLS 證書**
-  - Let's Encrypt (公網可訪問)
-  - 或 Self-signed (內網環境)
-  - cert-manager ClusterIssuer 配置
-
-### 實施步驟 (待執行)
-
-- [ ] **更新 Keycloak OAuth Client**
-  - 編輯 `grafana` Client
-  - 添加 Valid Redirect URI: `https://grafana.detectviz.com/*`
-  - 過渡期保留舊 URI: `https://grafana.detectviz.internal/*`
-
-- [ ] **更新 Grafana 配置**
-  - 文件: `argocd/apps/observability/grafana/overlays/values.yaml`
-  - 修改 `GF_SERVER_DOMAIN`: `grafana.detectviz.com`
-  - 修改 `grafana.ini.server.domain`: `grafana.detectviz.com`
-  - 檢查 OAuth URLs (是否也遷移 Keycloak 域名)
-
-- [ ] **創建 Grafana Ingress**
-  - 文件: `argocd/apps/observability/grafana/overlays/ingress.yaml`
-  - Host: `grafana.detectviz.com`
-  - TLS: cert-manager 自動生成
-  - Annotations: nginx ingress, WebSocket 支持
-
-- [ ] **更新 Kustomization**
-  - 文件: `argocd/apps/observability/grafana/overlays/kustomization.yaml`
-  - 添加 `ingress.yaml` 到 resources
-
-### 驗證步驟 (待執行)
-
-- [ ] **驗證 DNS 解析**
-  ```bash
-  nslookup grafana.detectviz.com
-  # 應解析到正確 IP
-  ```
-
-- [ ] **驗證 Ingress**
-  ```bash
-  kubectl get ingress -n grafana
-  curl -k https://grafana.detectviz.com
-  ```
-
-- [ ] **驗證 Keycloak SSO**
-  - 訪問: `https://grafana.detectviz.com`
-  - 點擊 "Sign in with Keycloak"
-  - 驗證重定向和登入流程
-
-- [ ] **驗證 Grafana 功能**
-  - Datasources 連接正常
-  - Dashboard 訪問正常
-  - Alerting 通知 URL 正確
-
-### 回滾計劃 (預備)
-
-```bash
-# 如果遷移有問題，快速回滾
-git revert <commit-sha>
-git push
-argocd app sync grafana
-```
-
-**預估時間**: 1 小時
-**依賴**: DNS 配置完成，cert-manager 運行
-
----
 
 # Phase 7: 最終驗證
 
@@ -818,7 +664,163 @@ argocd app sync grafana
 
 # Phase 8: Platform Governance (未來實施)
 
-## 8.1 ArgoCD Webhook
+## 8.1 ArgoCD Keycloak SSO 整合 🔜
+
+**狀態**: 待實施 (Phase 6 部署完成後)
+**參考文件**: `docs/app-guide/sso-domain-migration-plan.md`
+
+### 當前狀態 ⚠️
+
+- [x] **ArgoCD 當前使用 GitHub SSO** (via Dex)
+  - 文件: `argocd/apps/infrastructure/argocd/overlays/argocd-cm.yaml`
+  - Connector: GitHub OAuth App
+  - **需求**: 遷移到 Keycloak 統一身份認證
+
+### 實施步驟 (待執行)
+
+- [ ] **在 Keycloak 創建 ArgoCD Client**
+  - Client ID: `argocd`
+  - Client Protocol: `openid-connect`
+  - Valid Redirect URIs: `https://argocd.detectviz.internal/auth/callback`
+  - Scopes: `openid`, `profile`, `email`, `groups`
+  - 獲取 client secret
+
+- [ ] **儲存 Secret 到 Vault**
+  ```bash
+  vault kv put secret/argocd/oauth \
+    keycloak-client-secret="<從 Keycloak 複製>"
+  ```
+
+- [ ] **配置 ArgoCD Dex Keycloak Connector**
+  - 文件: `argocd/apps/infrastructure/argocd/overlays/argocd-cm.yaml`
+  - 添加 OIDC connector 配置
+  - 保留 GitHub connector 作為備用
+
+- [ ] **創建 ArgoCD ExternalSecret**
+  - 文件: `argocd/apps/infrastructure/argocd/overlays/externalsecret-keycloak.yaml`
+  - 從 Vault 同步 `secret/argocd/oauth`
+
+- [ ] **配置 ArgoCD RBAC**
+  - 文件: `argocd/apps/infrastructure/argocd/overlays/argocd-rbac-cm.yaml`
+  - 映射 Keycloak roles (admin, editor, viewer) 到 ArgoCD roles
+
+### 驗證步驟 (待執行)
+
+- [ ] **測試 Keycloak SSO 登入**
+  ```bash
+  # 訪問 ArgoCD UI
+  open https://argocd.detectviz.internal
+
+  # 點擊 "LOG IN VIA KEYCLOAK SSO"
+  # 驗證重定向到 Keycloak 登入頁面
+  # 驗證登入後回到 ArgoCD
+  ```
+
+- [ ] **驗證 RBAC 權限**
+  ```bash
+  argocd account get-user-info
+  # 檢查 roles 和 groups 映射正確
+  ```
+
+- [ ] **保留 Local Admin 備用**
+  ```bash
+  # 確保 admin 本地帳號仍可使用
+  argocd login argocd.detectviz.internal --username admin
+  ```
+
+**預估時間**: 1.5 小時
+**依賴**: Keycloak 部署完成，Realm 配置完成
+
+---
+
+## 8.2 Grafana 域名遷移 🔜
+
+**狀態**: 待實施 (Phase 6 部署完成後)
+**參考文件**: `docs/app-guide/sso-domain-migration-plan.md`
+
+### 當前狀態 ⚠️
+
+- [x] **Grafana 當前域名**: `grafana.detectviz.internal`
+  - 文件: `argocd/apps/observability/grafana/overlays/values.yaml`
+  - Lines: 219, 386 (GF_SERVER_DOMAIN)
+  - Lines: 419-421 (OAuth URLs)
+  - **需求**: 遷移到 `grafana.detectviz.com`
+
+### 準備工作 (待執行)
+
+- [ ] **配置 DNS**
+  - 選項 A: 公網 DNS (`grafana.detectviz.com` → 公網 IP)
+  - 選項 B: 內網 DNS (`grafana.detectviz.com` → 192.168.0.10)
+  - 選項 C: 本地 hosts 文件 (開發測試)
+
+- [ ] **準備 TLS 證書**
+  - Let's Encrypt (公網可訪問)
+  - 或 Self-signed (內網環境)
+  - cert-manager ClusterIssuer 配置
+
+### 實施步驟 (待執行)
+
+- [ ] **更新 Keycloak OAuth Client**
+  - 編輯 `grafana` Client
+  - 添加 Valid Redirect URI: `https://grafana.detectviz.com/*`
+  - 過渡期保留舊 URI: `https://grafana.detectviz.internal/*`
+
+- [ ] **更新 Grafana 配置**
+  - 文件: `argocd/apps/observability/grafana/overlays/values.yaml`
+  - 修改 `GF_SERVER_DOMAIN`: `grafana.detectviz.com`
+  - 修改 `grafana.ini.server.domain`: `grafana.detectviz.com`
+  - 檢查 OAuth URLs (是否也遷移 Keycloak 域名)
+
+- [ ] **創建 Grafana Ingress**
+  - 文件: `argocd/apps/observability/grafana/overlays/ingress.yaml`
+  - Host: `grafana.detectviz.com`
+  - TLS: cert-manager 自動生成
+  - Annotations: nginx ingress, WebSocket 支持
+
+- [ ] **更新 Kustomization**
+  - 文件: `argocd/apps/observability/grafana/overlays/kustomization.yaml`
+  - 添加 `ingress.yaml` 到 resources
+
+### 驗證步驟 (待執行)
+
+- [ ] **驗證 DNS 解析**
+  ```bash
+  nslookup grafana.detectviz.com
+  # 應解析到正確 IP
+  ```
+
+- [ ] **驗證 Ingress**
+  ```bash
+  kubectl get ingress -n grafana
+  curl -k https://grafana.detectviz.com
+  ```
+
+- [ ] **驗證 Keycloak SSO**
+  - 訪問: `https://grafana.detectviz.com`
+  - 點擊 "Sign in with Keycloak"
+  - 驗證重定向和登入流程
+
+- [ ] **驗證 Grafana 功能**
+  - Datasources 連接正常
+  - Dashboard 訪問正常
+  - Alerting 通知 URL 正確
+
+### 回滾計劃 (預備)
+
+```bash
+# 如果遷移有問題，快速回滾
+git revert <commit-sha>
+git push
+argocd app sync grafana
+```
+
+**預估時間**: 1 小時
+**依賴**: DNS 配置完成，cert-manager 運行
+
+---
+
+
+## 8.3 ArgoCD Webhook
 
 - [ ] **GitHub Webhook 配置**
   - GitHub Repo Settings → Webhooks
@@ -839,7 +841,7 @@ argocd app sync grafana
 
 ---
 
-## 8.2 ArgoCD RBAC
+## 8.4 ArgoCD RBAC
 
 - [ ] **RBAC Policy 配置**
   - 文件: `argocd/apps/infrastructure/argocd/overlays/argocd-rbac-cm.yaml`
@@ -852,7 +854,7 @@ argocd app sync grafana
 
 ---
 
-## 8.3 NetworkPolicy
+## 8.5 NetworkPolicy
 
 - [ ] **Namespace 隔離 NetworkPolicy**
   - Default deny all ingress/egress
@@ -862,16 +864,16 @@ argocd app sync grafana
 
 ---
 
-## 8.4 Infrastructure Exporters
+## 8.6 Infrastructure Exporters
 
-### Proxmox VE Exporter
+### 8.6.1 Proxmox VE Exporter
 
 - [ ] **Proxmox Host systemd service**
   - 安裝 prometheus-pve-exporter
   - 配置 systemd service
   - 暴露 metrics endpoint
 
-### IPMI Exporter
+### 8.6.2 IPMI Exporter
 
 - [ ] **K8s Deployment in monitoring namespace**
   - 創建 Deployment manifest
@@ -880,7 +882,7 @@ argocd app sync grafana
 
 ---
 
-## 8.5 Observability Dashboards
+## 8.7 Observability Dashboards
 
 - [ ] **Dashboard Provisioning as Code**
   - 創建 dashboard JSON files
