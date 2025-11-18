@@ -50,7 +50,7 @@
 
 ### 6.0 Vault Secrets 初始化（必須先執行）
 
-**重要**: 本項目使用 **Vault + ExternalSecrets Operator (ESO)** 管理所有應用 Secrets。
+**重要**: 本項目使用 **Vault + ExternalSecrets Operator (ESO)** 管理所有應用 Secrets。舊版 `scripts/bootstrap-app-secrets.sh` / `scripts/bootstrap-monitoring-secrets.sh` 已全面下線，禁止再於 Kubernetes 直接建立 Secret。
 
 #### Vault Secret 路徑結構
 
@@ -73,17 +73,20 @@ secret/
 
 ---
 
-#### 方式 1: 使用驗證腳本（推薦）
+#### 方式 1: Vault 自動化腳本 + 驗證（推薦）
 
 ```bash
-# 執行 Vault secrets 初始化和驗證
+# 1. 寫入所有應用所需的 Secrets（Vault KV v2）
+VAULT_ADDR=http://vault.vault.svc.cluster.local:8200 \
+VAULT_TOKEN="<root-token>" \
+  ./scripts/vault-setup-observability.sh
+
+# 2. 重新驗證 ExternalSecrets、ApplicationSet 與 Vault 狀態
 ./scripts/validate-pre-deployment.sh
 
-# 腳本會自動:
-# 1. 檢查 Vault 連接和狀態
-# 2. 生成並儲存所有必需的 secrets
-# 3. 驗證 ExternalSecrets 同步狀態
-# 4. 顯示密碼清單（請妥善保存）
+# 腳本流程:
+# - vault-setup-observability.sh：產生強隨機密碼 → 寫入 secret/<namespace>/... → 輸出密碼備份
+# - validate-pre-deployment.sh：檢查 Vault 連線、ExternalSecrets、ArgoCD ApplicationSet
 ```
 
 ---
@@ -194,6 +197,7 @@ kubectl get applications -n argocd | grep -E "postgresql|keycloak|prometheus|gra
 
 **Platform Services**:
 - `postgresql` - PostgreSQL HA 資料庫 (namespace: postgresql)
+- `pgbouncer-hpa` - PostgreSQL 連線池 + HPA (namespace: postgresql)
 - `keycloak` - 身份認證與 SSO (namespace: keycloak)
 
 **Application Layer**:
@@ -235,6 +239,10 @@ sleep 30 && kubectl get applications -n argocd
   └─ postgresql (namespace: postgresql)
        ├─ HA 3 replicas + Pgpool 2 replicas
        └─ 被 keycloak 和 grafana 依賴
+
+  └─ pgbouncer-hpa (namespace: postgresql)
+       ├─ 依賴 postgresql (Pgpool endpoint)
+       └─ 為 grafana、keycloak 提供連線池與自動擴縮
 
   └─ keycloak (namespace: keycloak)
        ├─ 依賴 postgresql
@@ -326,11 +334,54 @@ kubectl exec -it postgresql-ha-postgresql-0 -n postgresql -- \
 
 ---
 
-#### 6.3.2 部署 Keycloak
+#### 6.3.2 部署 PgBouncer + HPA
+
+**優先級**: 🟠 高（依賴 PostgreSQL，為 keycloak/grafana 提供穩定連線池）
+**Namespace**: `postgresql`
+**GitOps 入口**:
+- `argocd/apps/observability/pgbouncer-hpa/overlays/kustomization.yaml` → 引用 base Helm Chart 並套用 HPA
+- `argocd/apps/observability/pgbouncer-hpa/overlays/pgbouncer-hpa.yaml` → 定義 autoscaling 規則（min 3 / max 12 replicas）
+
+```bash
+# 同步 PgBouncer + HPA
+kubectl patch application pgbouncer-hpa -n argocd \
+  -p='{"operation":{"sync":{"prune":true}}}' --type=merge
+
+# 等待 Deployment 與 HPA 就緒
+kubectl wait --for=condition=Available deployment/pgbouncer -n postgresql --timeout=180s
+kubectl get hpa pgbouncer-hpa -n postgresql
+
+# 驗證連線池狀態
+kubectl get pods -n postgresql -l app.kubernetes.io/name=pgbouncer
+kubectl describe hpa pgbouncer-hpa -n postgresql | grep -E "Min Replicas|Max Replicas|CPU"
+```
+
+**預期結果**:
+```
+NAME                        READY   STATUS    RESTARTS   AGE
+pgbouncer-6cccbdf8d8-abcde  1/1     Running   0          1m
+pgbouncer-6cccbdf8d8-fghij  1/1     Running   0          1m
+pgbouncer-6cccbdf8d8-klmno  1/1     Running   0          1m
+
+NAME            REFERENCE               TARGETS   MINPODS   MAXPODS   REPLICAS
+pgbouncer-hpa   Deployment/pgbouncer    10%/60%   3         12        3
+```
+
+**故障排除**:
+- `helm template` 失敗：確認 `argocd/apps/observability/pgbouncer-hpa/base/kustomization.yaml` 仍僅定義 Helm Chart，並於 overlay 中引用。
+- HPA 無法作用：檢查 metrics-server 是否啟用，或確認 `kubectl describe hpa` 中的 `Events`。
+- Pod 無法連線 PostgreSQL：確認 `postgresql-pgpool.postgresql.svc.cluster.local` 可解析，並檢查 Vault secrets 是否同步。
+
+---
+
+#### 6.3.3 部署 Keycloak
 
 **優先級**: 🟠 高（依賴 postgresql，為 grafana 提供 OAuth2）
 **Namespace**: `keycloak`
 **配置**: 2 replicas, External PostgreSQL, Realm auto-import
+**GitOps 入口說明**:
+- `argocd/apps/identity/keycloak/overlays/kustomization.yaml` → 唯一掛載 Helm Chart 的 overlay（Production profile）
+- `argocd/apps/identity/keycloak/base/externalsecret-db.yaml` → 基底僅保留 Vault ExternalSecret，禁止在 base 載入 Helm chart
 
 ```bash
 # 同步 Keycloak

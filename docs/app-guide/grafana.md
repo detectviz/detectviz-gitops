@@ -14,7 +14,7 @@
 - **部署來源**: `gitops/apps/monitoring/grafana.yaml` 透過 Helm multi-source 裝載 `gitops/values/monitoring/grafana.yaml`，以獨立 Deployment 管理 HA。
 - **命名空間**: Grafana **必須**部署在 `monitoring` 命名空間。
 - **部署方式**: 透過 `gitops/apps/monitoring/grafana.yaml` 由 ArgoCD 進行 GitOps 同步，並使用 `gitops/values/monitoring/grafana.yaml` 進行組態覆寫。
-- **值檔要求**: 維持 `replicas: 2`、設定 `GF_UNIFIED_ALERTING_HA_*`、Alertmanager/Mimir/Loki Datasource URL 與 `scripts/bootstrap-monitoring-secrets.sh` 產生的 Secret 名稱一致。
+- **值檔要求**: 維持 `replicas: 2`、設定 `GF_UNIFIED_ALERTING_HA_*`、Alertmanager/Mimir/Loki Datasource URL，並對應 `argocd/apps/observability/grafana/overlays/externalsecret-*.yaml` 所提供的 Secret 名稱（Vault → ESO 流程）。
 - **高可用 (HA)**:
   - Grafana **必須**以至少 2 個副本的 Deployment 方式部署 (`replicas: 2`)。
   - **必須**啟用 Unified Alerting 的高可用模式，透過環境變數設定 Gossip 協議進行狀態同步：
@@ -22,7 +22,7 @@
     - `GF_UNIFIED_ALERTING_HA_PEERS`: `grafana-ha-headless:9094`
 - **後端資料庫**:
   - **必須**使用外部 PostgreSQL 資料庫來儲存儀表板、使用者、權限等狀態資料。
-  - 資料庫連線資訊透過 `grafana-database` Secret 注入，該 Secret 由 `scripts/bootstrap-monitoring-secrets.sh` 腳本管理。
+  - 資料庫連線資訊透過 `grafana-database` Secret 注入，該 Secret 由 Vault KV (`secret/grafana/database`) + ExternalSecret 管理，可透過 `./scripts/vault-setup-observability.sh` 或手動 `vault kv put` 初始化。
   - **資料庫連線**: 使用 PostgreSQL HA（`detectviz-postgresql-admin`、`detectviz-postgresql-initdb` Secret）與 `storageClass: detectviz-nvme`，確保儀表板及 LLM 插件資料持久化。
 - **網路曝露**: 透過 Nginx Ingress 將外部網域 `detectviz.com` 代理至 `app.detectviz.internal`，Grafana Service 維持 ClusterIP。
 
@@ -63,7 +63,7 @@
 ### 1.5 安全與管理
 
 - **管理員帳號**:
-  - 管理員帳號與密碼**必須**透過 `grafana-admin` Secret 進行管理，該 Secret 由 `scripts/bootstrap-monitoring-secrets.sh` 腳本建立。
+  - 管理員帳號與密碼**必須**透過 `grafana-admin` Secret 進行管理，該 Secret 由 Vault → ESO 流程自動同步（`vault-setup-observability.sh` 會先寫入 `secret/grafana/admin`）。
   - **禁止**在 `values.yaml` 中使用明文的 `adminPassword`。
 - **Ingress**: Grafana 應透過 Ingress 暴露服務，並在生產環境中啟用 TLS。
 - **`GF_SERVER_DOMAIN`**: **必須**設定此環境變數，以確保郵件通知中的連結正確。

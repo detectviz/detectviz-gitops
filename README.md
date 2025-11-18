@@ -64,6 +64,7 @@ graph LR
 
 ### Platform Services (獨立 namespace)
 - [P5] **postgresql**：資料庫服務 (Grafana / Keycloak backend，HA 3 replicas)
+- [P5] **pgbouncer-hpa**：PostgreSQL 連線池 + HPA，自動調整連線代理副本 (namespace: postgresql)
 - [P5] **keycloak**：OIDC 身份與存取控制 (Realm-based multi-tenancy)
 
 ### Application Layer
@@ -85,6 +86,7 @@ graph LR
 |-------------|----------------------------------------------|
 | postgresql (production) | `argocd/apps/observability/postgresql/overlays/production` |
 | keycloak | `argocd/apps/identity/keycloak/overlays` |
+| pgbouncer-hpa | `argocd/apps/observability/pgbouncer-hpa/overlays` |
 | grafana | `argocd/apps/observability/grafana/overlays` |
 | prometheus | `argocd/apps/observability/prometheus/overlays` |
 | loki | `argocd/apps/observability/loki/overlays` |
