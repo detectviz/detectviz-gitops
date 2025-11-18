@@ -25,6 +25,11 @@ postgresql
   - `keycloak` 資料庫
   - `grafana` 資料庫
 
+#### Pgpool 映像版本鎖定
+- `argocd/apps/observability/postgresql/overlays/production/kustomization.yaml` 將 Helm Chart 版本固定在 `bitnami/postgresql-ha` `12.8.2`，由 Chart 預設決定 Pgpool 映像，禁止再在 base values 覆寫 `image.tag`。【F:argocd/apps/observability/postgresql/overlays/production/kustomization.yaml†L1-L15】
+- 透過 `curl -s https://raw.githubusercontent.com/bitnami/charts/main/bitnami/postgresql-ha/Chart.yaml | grep -n pgpool` 可驗證該版本對應 `docker.io/bitnami/pgpool:4.6.3-debian-12-r0`，確保供應的 tag 為官方已發布版本。【29a028†L1-L9】
+- 若需測試不同 Pgpool 版本，請於 `overlays/test` 或新的臨時 overlay 加上 `valuesFile` 覆寫，完成 `kustomize build --enable-helm` 驗證後再提交，避免影響生產部署的重現性。
+
 ### 身份認證依賴
 
 #### Keycloak (SSO/OAuth2 Provider)

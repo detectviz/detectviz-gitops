@@ -631,6 +631,9 @@ kubectl get applicationset -n argocd
 # 預期看到: argocd-bootstrap, detectviz-gitops
 ```
 
+> [!IMPORTANT]
+> `infra-appset` 使用 Git Generator 追蹤 `argocd/apps/infrastructure/*`，因此每個元件根目錄都需要有 `kustomization.yaml` 將資源指向 `overlays/`。若缺少此入口，Argo CD 會只看到空目錄而無法生成 Application。提交任何新的基礎設施服務前，請執行 `kustomize build --enable-helm argocd/apps/infrastructure/<component>`，確認根層入口確實載入 overlay（若環境無法下載 Helm chart，請在變更紀錄中附上等效驗證）。
+
 #### 4.5 理解 Bootstrap 分階段部署
 
 > **📚 詳細文檔**: `argocd/bootstrap/PHASE_DEPLOYMENT.md`
@@ -720,6 +723,9 @@ kubectl get pods -n topolvm-system
 5. `infra-external-secrets-operator`
 6. `infra-vault`
 7. `infra-topolvm`
+
+> [!TIP]
+> 如果 ApplicationSet 沒有自動生成上述 Application，請先在 Repo 中檢查對應的 `argocd/apps/infrastructure/<component>/kustomization.yaml` 是否仍引用 `resources: - overlays`。修正後重新執行 `kubectl patch application root ...` 觸發 `root-argocd-app` Refresh，即可重新載入最新的 infra-appset 配置。
 
 **注意**: `infra-argocd` 是 ArgoCD 的配置管理應用,會自動出現在 ApplicationSet 中。它不會重新部署 ArgoCD 本身,只管理配置文件（如 server URL）。
 

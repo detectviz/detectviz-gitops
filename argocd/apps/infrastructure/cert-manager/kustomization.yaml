@@ -1,0 +1,8 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# 作為 infra-appset 的入口，統一導向 overlay 以載入 Helm CRDs 與容忍設定。
+namespace: cert-manager
+
+resources:
+  - overlays

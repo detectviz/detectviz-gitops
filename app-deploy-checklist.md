@@ -37,7 +37,7 @@
   ```
 
 - [x] **ExternalSecret 分布配置**
-  - PostgreSQL: `argocd/apps/observability/postgresql/overlays/externalsecret.yaml` (namespace: `postgresql`)
+- PostgreSQL: `argocd/apps/observability/postgresql/base/externalsecret.yaml` (namespace: `postgresql`)
   - Keycloak: `argocd/apps/identity/keycloak/overlays/externalsecret-db.yaml` (namespace: `keycloak`)
   - Grafana Admin: `argocd/apps/observability/grafana/overlays/externalsecret-admin.yaml` (namespace: `grafana`)
   - Grafana DB: `argocd/apps/observability/grafana/overlays/externalsecret-db.yaml` (namespace: `grafana`)
@@ -212,13 +212,20 @@
 ### PostgreSQL HA ✅
 
 - [x] **PostgreSQL HA 配置**
-  - 文件: `argocd/apps/observability/postgresql/overlays/values.yaml`
+  - Overlay: `argocd/apps/observability/postgresql/overlays/production/kustomization.yaml`
+  - Values (production): `argocd/apps/observability/postgresql/base/values.yaml`
   - Namespace: `postgresql` ✅
   - PostgreSQL replicas: 3 (1 primary + 2 standby)
   - Pgpool replicas: 2
   - Pod anti-affinity: `hard`
   - StorageClass: `topolvm-provisioner`
   - Storage: 10Gi per replica
+  - ServiceMonitor: enabled，namespace `monitoring`
+
+- [x] **Test profile（僅限 CI/PoC）**
+  - Overlay: `argocd/apps/observability/postgresql/overlays/test`
+  - Values: `values.test.yaml`（單副本、無 PVC、停用 ServiceMonitor）
+  - ⚠️ 使用後請將 `apps-appset` 的 `postgresql.path` 改回 production，避免生產環境以測試設定運行。
 
 - [x] **ExternalSecret 配置**
   - Namespace: `postgresql` ✅

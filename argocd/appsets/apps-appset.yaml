@@ -12,54 +12,54 @@ spec:
         elements:
           # Platform Services (獨立 namespace)
           - name: postgresql
-            path: argocd/apps/observability/postgresql
+            path: argocd/apps/observability/postgresql/overlays/production
             namespace: postgresql
             category: platform-service
 
           - name: keycloak
-            path: argocd/apps/identity/keycloak
+            path: argocd/apps/identity/keycloak/overlays
             namespace: keycloak
             category: platform-service
 
           # Application Layer (獨立 namespace)
           - name: grafana
-            path: argocd/apps/observability/grafana
+            path: argocd/apps/observability/grafana/overlays
             namespace: grafana
             category: application
 
           # Observability Backend (統一 monitoring namespace)
           - name: prometheus
-            path: argocd/apps/observability/prometheus
+            path: argocd/apps/observability/prometheus/overlays
             namespace: monitoring
             category: observability
 
           - name: loki
-            path: argocd/apps/observability/loki
+            path: argocd/apps/observability/loki/overlays
             namespace: monitoring
             category: observability
 
           - name: tempo
-            path: argocd/apps/observability/tempo
+            path: argocd/apps/observability/tempo/overlays
             namespace: monitoring
             category: observability
 
           - name: mimir
-            path: argocd/apps/observability/mimir
+            path: argocd/apps/observability/mimir/overlays
             namespace: monitoring
             category: observability
 
           - name: minio
-            path: argocd/apps/observability/minio
+            path: argocd/apps/observability/minio/overlays
             namespace: monitoring
             category: observability
 
           - name: alertmanager
-            path: argocd/apps/observability/alertmanager
+            path: argocd/apps/observability/alertmanager/overlays
             namespace: monitoring
             category: observability
 
           - name: alloy
-            path: argocd/apps/observability/alloy
+            path: argocd/apps/observability/alloy/overlays
             namespace: monitoring
             category: observability
 
