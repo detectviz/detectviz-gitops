@@ -301,15 +301,9 @@ prometheus:
 - 資源限制
 - ServiceMonitor
 
-### Step 2: 創建 Secret 管理腳本
+### Step 2: 自動化 Vault Secrets（取代手動腳本）
 
-創建 `scripts/bootstrap-app-secrets.sh`:
-```bash
-#!/bin/bash
-# 生成 PostgreSQL Secrets
-# 生成 Grafana Secrets
-# 生成 OAuth2 Secrets
-```
+使用 `scripts/vault-setup-observability.sh` 直接將 PostgreSQL/Grafana/Keycloak/Minio 密碼寫入 `secret/<namespace>/...`，然後執行 `scripts/validate-pre-deployment.sh` 驗證 ExternalSecret 狀態，避免再以 `kubectl create secret` 產生一次性憑證。
 
 ### Step 3: 更新 deploy.md Phase 6
 

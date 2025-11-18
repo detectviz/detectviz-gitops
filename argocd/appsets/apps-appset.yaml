@@ -21,6 +21,11 @@ spec:
             namespace: keycloak
             category: platform-service
 
+          - name: pgbouncer-hpa
+            path: argocd/apps/observability/pgbouncer-hpa/overlays
+            namespace: postgresql
+            category: platform-service
+
           # Application Layer (獨立 namespace)
           - name: grafana
             path: argocd/apps/observability/grafana/overlays

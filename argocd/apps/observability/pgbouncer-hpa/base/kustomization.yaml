@@ -1,6 +1,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+# Base 僅保留 Helm Chart 定義，透過 overlay 引用時才渲染資源
 helmCharts:
   - name: pgbouncer
     repo: https://charts.bitnami.com/bitnami

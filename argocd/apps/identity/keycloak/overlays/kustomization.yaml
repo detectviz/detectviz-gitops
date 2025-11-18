@@ -5,9 +5,12 @@ namespace: keycloak
 
 resources:
   - ../base
-  - externalsecret-db.yaml
   - realm-configmap.yaml
 
+# overlay 掛載 Bitnami Helm Chart 並套用生產環境 values
 helmCharts:
   - name: keycloak
+    repo: https://charts.bitnami.com/bitnami
+    version: "19.2.1"
+    releaseName: keycloak
     valuesFile: values.yaml

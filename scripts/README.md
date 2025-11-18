@@ -49,6 +49,15 @@
 - **依賴**: 需要 Terraform 和 jq
 - **輸出**: 生成 `.last-node-labels.sh` 腳本用於應用標籤
 
+#### `vault-setup-observability.sh` ✅ **推薦使用**
+- **用途**: 依據 `VAULT_PATH_STRUCTURE.md` 一次性產生 PostgreSQL、Grafana、Keycloak、Minio 等所有 Observability Secrets，並寫入 Vault KV v2。
+- **使用時機**: Phase 6.0 - Vault + ESO 初始化。
+- **功能**:
+  - 自動產生強隨機密碼（含 Pgpool MD5 雜湊）。
+  - 將密碼寫入對應的 `secret/<namespace>/...` 路徑，確保 ExternalSecret 讀取一致。
+  - 輸出一次性密碼摘要，方便匯入密碼管理器。
+- **注意**: 生成後請立刻執行 `./scripts/validate-pre-deployment.sh` 驗證 ExternalSecrets 是否同步成功。
+
 ### 驗證腳本
 
 #### `health-check.sh`
@@ -100,12 +109,9 @@
 - **輸出**: 彩色狀態報告，顯示 PASS/FAIL/WARN
 - **退出碼**: 0=成功, 1=有問題
 
-### 輔助腳本
+### Secrets 自動化指引
 
-#### `bootstrap-monitoring-secrets.sh`
-- **用途**: 為監控堆疊創建必要的密鑰
-- **使用時機**: 監控應用部署前
-- **功能**: 生成和管理監控相關的認證密鑰
+- ✅ **已轉向 Vault → ESO**: 本倉庫已全面改用 `vault-setup-observability.sh` + ExternalSecret。原本的 `bootstrap-app-secrets.sh` 與 `bootstrap-monitoring-secrets.sh` 會直接在 Kubernetes 建立 Secrets，違反 Platform Engineering 要求，因此已移除。請依照 `app-deploy-sop.md` Phase 6.0 的 Vault 流程執行。
 
 ## 使用方式
 

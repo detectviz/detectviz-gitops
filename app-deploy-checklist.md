@@ -37,8 +37,8 @@
   ```
 
 - [x] **ExternalSecret 分布配置**
-- PostgreSQL: `argocd/apps/observability/postgresql/base/externalsecret.yaml` (namespace: `postgresql`)
-  - Keycloak: `argocd/apps/identity/keycloak/overlays/externalsecret-db.yaml` (namespace: `keycloak`)
+  - PostgreSQL: `argocd/apps/observability/postgresql/base/externalsecret.yaml` (namespace: `postgresql`)
+  - Keycloak: `argocd/apps/identity/keycloak/base/externalsecret-db.yaml` (namespace: `keycloak`，base 專責保留 Vault Secret 入口)
   - Grafana Admin: `argocd/apps/observability/grafana/overlays/externalsecret-admin.yaml` (namespace: `grafana`)
   - Grafana DB: `argocd/apps/observability/grafana/overlays/externalsecret-db.yaml` (namespace: `grafana`)
   - Grafana OAuth: `argocd/apps/observability/grafana/overlays/externalsecret-oauth.yaml` (namespace: `grafana`)
@@ -47,6 +47,11 @@
 ### 部署前準備 ⚠️
 
 - [ ] **6.0 初始化 Vault Secrets** (參考: `VAULT_PATH_STRUCTURE.md`)
+  - 指令: `VAULT_ADDR=http://vault.vault.svc.cluster.local:8200 VAULT_TOKEN=<root-token> ./scripts/vault-setup-observability.sh`
+  - 備註: 舊版 `scripts/bootstrap-app-secrets.sh` / `scripts/bootstrap-monitoring-secrets.sh` 已下線，禁止直接 `kubectl create secret`。
+- [ ] **6.0 驗證 Vault + ESO 狀態**
+  - 指令: `./scripts/validate-pre-deployment.sh`
+  - 預期: `ExternalSecrets` 狀態 `SecretSynced`、`apps-appset` 已產生所有應用。
 
 ---
 
@@ -252,12 +257,56 @@
 
 ---
 
-## 6.4 Keycloak (Platform Service)
+## 6.4 PgBouncer HPA (Platform Service)
+
+### PgBouncer Deployment ✅
+
+- [x] **Helm overlay**
+  - 入口: `argocd/apps/observability/pgbouncer-hpa/overlays/kustomization.yaml`
+  - 結構: `resources` 先引用 `../base`（bitnami/pgbouncer 2.2.9）再附加 HPA
+  - Namespace: `postgresql` ✅
+  - Service: `pgbouncer` Deployment、`pgbouncer` Service
+  - Vault: 共用 PostgreSQL 的 `secret/data/postgresql/*` 憑證
+
+- [x] **Deployment 參數**
+  - Chart: bitnami/pgbouncer 2.2.9
+  - ReplicaCount: 3（由 HPA 下限維持）
+  - PodAnnotations: `cluster=detectviz-production`, `managed-by=gitops`
+  - ServiceAccount: `pgbouncer`
+  - 連線位址: `postgresql-pgpool.postgresql.svc.cluster.local:5432`
+
+### HPA 規則 ✅
+
+- [x] **資源檔案**
+  - `argocd/apps/observability/pgbouncer-hpa/overlays/pgbouncer-hpa.yaml`
+  - Namespace: `postgresql`
+  - `scaleTargetRef`: Deployment/pgbouncer
+  - minReplicas: 3、maxReplicas: 12
+  - 指標: CPU averageUtilization 60%
+  - 行為: scaleUp 50%/30s、scaleDown 1 Pod/90s（stabilization 300s）
+
+### 部署後驗證 ⚠️
+
+- [ ] **驗證 PgBouncer Pods**
+  - `kubectl get pods -n postgresql -l app.kubernetes.io/name=pgbouncer`
+  - 預期: 至少 3 個 Running Pods
+
+- [ ] **驗證 HPA 指標**
+  - `kubectl get hpa pgbouncer-hpa -n postgresql`
+  - `kubectl describe hpa pgbouncer-hpa -n postgresql | grep -E "Min Replicas|Max Replicas|averageUtilization"`
+
+- [ ] **驗證連線池健康度**
+  - `kubectl exec -it deploy/pgbouncer -n postgresql -- psql -p 6432 -U postgres -h localhost pgbouncer -c "SHOW POOLS;"`
+  - 確認 `cl_active` / `cl_waiting` 數值符合負載狀況
+
+---
+
+## 6.5 Keycloak (Platform Service)
 
 ### Keycloak 配置 ✅
 
 - [x] **Keycloak 基礎配置**
-  - 文件: `argocd/apps/identity/keycloak/overlays/`
+  - 文件: `argocd/apps/identity/keycloak/overlays/kustomization.yaml`（唯一的 Helm Chart overlay 入口；base 僅保留 ExternalSecret）
   - Namespace: `keycloak` ✅
   - Chart: bitnami/keycloak 19.2.1
 
@@ -318,7 +367,7 @@
 
 ---
 
-## 6.5 Grafana (Application Layer)
+## 6.6 Grafana (Application Layer)
 
 ### Grafana HA ✅
 
@@ -461,13 +510,13 @@
 
 ---
 
-## 6.6 Namespace 配置完整性
+## 6.7 Namespace 配置完整性
 
 ### Helm Chart namespace 移除 ✅
 
 - [x] **所有 Helm Chart 已移除 namespace 硬編碼**
   - PostgreSQL: `argocd/apps/observability/postgresql/base/kustomization.yaml`
-  - Keycloak: `argocd/apps/identity/keycloak/base/kustomization.yaml`
+  - Keycloak: `argocd/apps/identity/keycloak/overlays/kustomization.yaml`（Helm Chart 僅在 overlay 載入，base 只提供 Vault Secret）
   - Grafana: `argocd/apps/observability/grafana/base/kustomization.yaml`
   - Prometheus: `argocd/apps/observability/prometheus/base/kustomization.yaml`
   - Loki: `argocd/apps/observability/loki/base/kustomization.yaml`

@@ -1,8 +1,8 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-helmCharts:
-  - name: keycloak
-    repo: https://charts.bitnami.com/bitnami
-    version: "19.2.1"
-    releaseName: keycloak
-    # namespace 由 ApplicationSet 的 destination.namespace 決定 (keycloak)
+
+# 基底層僅保留共用的 Vault ExternalSecret，避免與 overlay 的 Helm 值重疊
+namespace: keycloak
+
+resources:
+  - externalsecret-db.yaml

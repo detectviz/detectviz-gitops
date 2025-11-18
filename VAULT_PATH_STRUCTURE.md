@@ -7,7 +7,7 @@
 
 ## Vault KV v2 Path 架構
 
-DetectViz 使用 **按 namespace 隔離** 的 Vault path 結構，實現 Zero Trust 和 Least Privilege：
+DetectViz 使用 **按 namespace 隔離** 的 Vault path 結構，實現 Zero Trust 和 Least Privilege。Secrets 只能透過 Vault 初始化（`./scripts/vault-setup-observability.sh` 或手動 `vault kv put`），再由 ExternalSecrets Operator 投遞到 Kubernetes，任何 `kubectl create secret` 的 bootstrap 腳本都已淘汰：
 
 ```bash
 secret/
@@ -162,7 +162,7 @@ spec:
 ### Keycloak ExternalSecrets
 
 **Namespace**: `keycloak`
-**文件**: `argocd/apps/identity/keycloak/overlays/externalsecret-db.yaml`
+**文件**: `argocd/apps/identity/keycloak/base/externalsecret-db.yaml`
 
 ```yaml
 apiVersion: external-secrets.io/v1beta1

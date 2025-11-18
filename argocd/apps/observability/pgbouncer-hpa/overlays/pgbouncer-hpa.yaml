@@ -12,7 +12,7 @@ apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: pgbouncer-hpa
-  namespace: detectviz # PgBouncer 部署所在的命名空間。
+  namespace: postgresql # 與 PgBouncer Deployment 相同的命名空間。
   labels:
     app: pgbouncer
     layer: data
