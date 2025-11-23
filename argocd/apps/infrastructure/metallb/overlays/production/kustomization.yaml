@@ -3,7 +3,7 @@ kind: Kustomization
 namespace: metallb-system # 確保命名空間正確
 
 resources:
-  - ../base
+  - ../../base
   - ipaddresspool.yaml
   - l2advertisement.yaml
 

@@ -4,7 +4,7 @@ kind: Kustomization
 namespace: kube-system
 
 resources:
-  - ../base
+  - ../../base
   - local-path-storage-class.yaml
 
 helmCharts:

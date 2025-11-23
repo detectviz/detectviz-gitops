@@ -4,7 +4,7 @@ kind: Kustomization
 namespace: ingress-nginx
 
 bases:
-  - ../base
+  - ../../base
 
 # Helm Chart values override
 helmCharts:

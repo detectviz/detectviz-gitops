@@ -6,7 +6,6 @@ resources:
   - argocd-ingress.yaml       # 需要 Ingress Controller
   - cluster-issuer.yaml        # 需要 cert-manager
   - rollouts-extension.yaml    # 需要 ArgoCD Rollouts
-  - observability-appset.yaml  # Observability Stack ApplicationSet
 
 # 通用標籤
 labels:

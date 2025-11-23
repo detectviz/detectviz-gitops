@@ -14,7 +14,7 @@
 - **部署來源**: `gitops/apps/monitoring/grafana.yaml` 透過 Helm multi-source 裝載 `gitops/values/monitoring/grafana.yaml`，以獨立 Deployment 管理 HA。
 - **命名空間**: Grafana **必須**部署在 `monitoring` 命名空間。
 - **部署方式**: 透過 `gitops/apps/monitoring/grafana.yaml` 由 ArgoCD 進行 GitOps 同步，並使用 `gitops/values/monitoring/grafana.yaml` 進行組態覆寫。
-- **值檔要求**: 維持 `replicas: 2`、設定 `GF_UNIFIED_ALERTING_HA_*`、Alertmanager/Mimir/Loki Datasource URL，並對應 `argocd/apps/observability/grafana/overlays/externalsecret-*.yaml` 所提供的 Secret 名稱（Vault → ESO 流程）。
+- **值檔要求**: 維持 `replicas: 2`、設定 `GF_UNIFIED_ALERTING_HA_*`、Alertmanager/Mimir/Loki Datasource URL，並對應 `argocd/apps/observability/grafana/overlays/production/externalsecret-*.yaml` 所提供的 Secret 名稱（Vault → ESO 流程）。
 - **高可用 (HA)**:
   - Grafana **必須**以至少 2 個副本的 Deployment 方式部署 (`replicas: 2`)。
   - **必須**啟用 Unified Alerting 的高可用模式，透過環境變數設定 Gossip 協議進行狀態同步：

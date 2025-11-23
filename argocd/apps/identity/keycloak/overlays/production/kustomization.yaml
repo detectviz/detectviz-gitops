@@ -4,7 +4,7 @@ kind: Kustomization
 namespace: keycloak
 
 resources:
-  - ../base
+  - ../../base
   - realm-configmap.yaml
 
 # overlay 掛載 Bitnami Helm Chart 並套用生產環境 values

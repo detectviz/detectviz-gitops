@@ -85,16 +85,16 @@ graph LR
 | Application | ApplicationSet `spec.generators.list[].path` |
 |-------------|----------------------------------------------|
 | postgresql (production) | `argocd/apps/observability/postgresql/overlays/production` |
-| keycloak | `argocd/apps/identity/keycloak/overlays` |
-| pgbouncer-hpa | `argocd/apps/observability/pgbouncer-hpa/overlays` |
-| grafana | `argocd/apps/observability/grafana/overlays` |
-| prometheus | `argocd/apps/observability/prometheus/overlays` |
-| loki | `argocd/apps/observability/loki/overlays` |
-| tempo | `argocd/apps/observability/tempo/overlays` |
-| mimir | `argocd/apps/observability/mimir/overlays` |
-| minio | `argocd/apps/observability/minio/overlays` |
-| alloy | `argocd/apps/observability/alloy/overlays` |
-| alertmanager | `argocd/apps/observability/alertmanager/overlays` |
+| keycloak | `argocd/apps/identity/keycloak/overlays/production` |
+| pgbouncer-hpa | `argocd/apps/observability/pgbouncer-hpa/overlays/production` |
+| grafana | `argocd/apps/observability/grafana/overlays/production` |
+| prometheus | `argocd/apps/observability/prometheus/overlays/production` |
+| loki | `argocd/apps/observability/loki/overlays/production` |
+| tempo | `argocd/apps/observability/tempo/overlays/production` |
+| mimir | `argocd/apps/observability/mimir/overlays/production` |
+| minio | `argocd/apps/observability/minio/overlays/production` |
+| alloy | `argocd/apps/observability/alloy/overlays/production` |
+| alertmanager | `argocd/apps/observability/alertmanager/overlays/production` |
 
 > [!TIP]
 > 新增觀測類或身分服務時，請先建立 `base/` 與 `overlays/`，並讓 ApplicationSet 指向 overlay 路徑，以避免 Argo CD 生成空白 manifests。
@@ -115,15 +115,15 @@ graph LR
 
 | 應用 | ApplicationSet 入口 | overlay 來源 |
 |------|---------------------|--------------|
-| infra-argocd | `argocd/apps/infrastructure/argocd` | `argocd/apps/infrastructure/argocd/overlays` |
-| infra-cert-manager | `argocd/apps/infrastructure/cert-manager` | `argocd/apps/infrastructure/cert-manager/overlays` |
-| infra-external-secrets-operator | `argocd/apps/infrastructure/external-secrets-operator` | `argocd/apps/infrastructure/external-secrets-operator/overlays` |
-| infra-ingress-nginx | `argocd/apps/infrastructure/ingress-nginx` | `argocd/apps/infrastructure/ingress-nginx/overlays` |
-| infra-kube-vip | `argocd/apps/infrastructure/kube-vip` | `argocd/apps/infrastructure/kube-vip/overlays` |
-| infra-local-path-provisioner | `argocd/apps/infrastructure/local-path-provisioner` | `argocd/apps/infrastructure/local-path-provisioner/overlays` |
-| infra-metallb | `argocd/apps/infrastructure/metallb` | `argocd/apps/infrastructure/metallb/overlays` |
-| infra-topolvm | `argocd/apps/infrastructure/topolvm` | `argocd/apps/infrastructure/topolvm/overlays` |
-| infra-vault | `argocd/apps/infrastructure/vault` | `argocd/apps/infrastructure/vault/overlays` |
+| infra-argocd | `argocd/apps/infrastructure/argocd` | `argocd/apps/infrastructure/argocd/overlays/production` |
+| infra-cert-manager | `argocd/apps/infrastructure/cert-manager` | `argocd/apps/infrastructure/cert-manager/overlays/production` |
+| infra-external-secrets-operator | `argocd/apps/infrastructure/external-secrets-operator` | `argocd/apps/infrastructure/external-secrets-operator/overlays/production` |
+| infra-ingress-nginx | `argocd/apps/infrastructure/ingress-nginx` | `argocd/apps/infrastructure/ingress-nginx/overlays/production` |
+| infra-kube-vip | `argocd/apps/infrastructure/kube-vip` | `argocd/apps/infrastructure/kube-vip/overlays/production` |
+| infra-local-path-provisioner | `argocd/apps/infrastructure/local-path-provisioner` | `argocd/apps/infrastructure/local-path-provisioner/overlays/production` |
+| infra-metallb | `argocd/apps/infrastructure/metallb` | `argocd/apps/infrastructure/metallb/overlays/production` |
+| infra-topolvm | `argocd/apps/infrastructure/topolvm` | `argocd/apps/infrastructure/topolvm/overlays/production` |
+| infra-vault | `argocd/apps/infrastructure/vault` | `argocd/apps/infrastructure/vault/overlays/production` |
 
 > 在新增基礎設施元件時，請複製同樣的結構，並執行 `kustomize build --enable-helm argocd/apps/infrastructure/<component>` 驗證根層入口確實載入 overlay。若 Helm Chart 需要存取外部網路而環境受限，請在 PR 測試結果中紀錄替代驗證方式。
 
@@ -138,7 +138,7 @@ graph LR
 - **Dashboard Provisioning** (ConfigMap-based GitOps)：
   - 3-folder structure: Platform, Infrastructure, Applications
   - Kubernetes Cluster Overview (nodes, pods, CPU, memory)
-  - 文檔: `argocd/apps/observability/grafana/overlays/dashboards/README.md`
+  - 文檔: `argocd/apps/observability/grafana/overlays/production/dashboards/README.md`
 
 ## 目錄結構
 ```bash

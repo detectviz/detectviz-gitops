@@ -39,9 +39,9 @@
 - [x] **ExternalSecret 分布配置**
   - PostgreSQL: `argocd/apps/observability/postgresql/base/externalsecret.yaml` (namespace: `postgresql`)
   - Keycloak: `argocd/apps/identity/keycloak/base/externalsecret-db.yaml` (namespace: `keycloak`，base 專責保留 Vault Secret 入口)
-  - Grafana Admin: `argocd/apps/observability/grafana/overlays/externalsecret-admin.yaml` (namespace: `grafana`)
-  - Grafana DB: `argocd/apps/observability/grafana/overlays/externalsecret-db.yaml` (namespace: `grafana`)
-  - Grafana OAuth: `argocd/apps/observability/grafana/overlays/externalsecret-oauth.yaml` (namespace: `grafana`)
+  - Grafana Admin: `argocd/apps/observability/grafana/overlays/production/externalsecret-admin.yaml` (namespace: `grafana`)
+  - Grafana DB: `argocd/apps/observability/grafana/overlays/production/externalsecret-db.yaml` (namespace: `grafana`)
+  - Grafana OAuth: `argocd/apps/observability/grafana/overlays/production/externalsecret-oauth.yaml` (namespace: `grafana`)
   - Minio: `argocd/apps/observability/minio/overlays/externalsecret.yaml` (namespace: `monitoring`)
 
 ### 部署前準備 ⚠️
@@ -372,7 +372,7 @@
 ### Grafana HA ✅
 
 - [x] **Grafana HA 配置**
-  - 文件: `argocd/apps/observability/grafana/overlays/values.yaml`
+  - 文件: `argocd/apps/observability/grafana/overlays/production/values.yaml`
   - Namespace: `grafana` ✅
   - Replicas: 2
   - Resources: 512Mi-1Gi memory, 200m-1000m CPU
@@ -443,7 +443,7 @@
 ### Dashboard Provisioning ✅
 
 - [x] **Dashboard Provisioning 配置完成**
-  - 文件: `argocd/apps/observability/grafana/overlays/dashboard-provider.yaml`
+  - 文件: `argocd/apps/observability/grafana/overlays/production/dashboard-provider.yaml`
   - Provider: 3 個 dashboard folders
     - Platform (Platform 層級監控)
     - Infrastructure (基礎設施監控)
@@ -451,12 +451,12 @@
   - Auto-discovery: 從 `/etc/grafana/provisioning/dashboards/` 自動加載
 
 - [x] **Dashboard ConfigMap**
-  - 文件: `argocd/apps/observability/grafana/overlays/dashboard-configmap.yaml`
+  - 文件: `argocd/apps/observability/grafana/overlays/production/dashboard-configmap.yaml`
   - ConfigMap: `grafana-dashboards-platform`
   - 包含 dashboard: `kubernetes-cluster-overview.json`
 
 - [x] **Kubernetes Cluster Overview Dashboard**
-  - 文件: `argocd/apps/observability/grafana/overlays/dashboards/kubernetes-cluster-overview.json`
+  - 文件: `argocd/apps/observability/grafana/overlays/production/dashboards/kubernetes-cluster-overview.json`
   - UID: `kubernetes-cluster-overview`
   - Datasource: Mimir (Prometheus)
   - Panels:
@@ -468,7 +468,7 @@
     - Memory Usage by Node (timeseries)
 
 - [x] **Dashboard 管理文檔**
-  - 文件: `argocd/apps/observability/grafana/overlays/dashboards/README.md`
+  - 文件: `argocd/apps/observability/grafana/overlays/production/dashboards/README.md`
   - 涵蓋內容:
     - 3 種添加 dashboard 方法 (UI export, grafana.com import, Jsonnet)
     - 最佳實踐 (UID, datasource, tags, variables)
@@ -728,7 +728,7 @@
 ### 當前狀態 ⚠️
 
 - [x] **ArgoCD 當前使用 GitHub SSO** (via Dex)
-  - 文件: `argocd/apps/infrastructure/argocd/overlays/argocd-cm.yaml`
+  - 文件: `argocd/apps/infrastructure/argocd/overlays/production/argocd-cm.yaml`
   - Connector: GitHub OAuth App
   - **需求**: 遷移到 Keycloak 統一身份認證
 
@@ -748,16 +748,16 @@
   ```
 
 - [ ] **配置 ArgoCD Dex Keycloak Connector**
-  - 文件: `argocd/apps/infrastructure/argocd/overlays/argocd-cm.yaml`
+  - 文件: `argocd/apps/infrastructure/argocd/overlays/production/argocd-cm.yaml`
   - 添加 OIDC connector 配置
   - 保留 GitHub connector 作為備用
 
 - [ ] **創建 ArgoCD ExternalSecret**
-  - 文件: `argocd/apps/infrastructure/argocd/overlays/externalsecret-keycloak.yaml`
+  - 文件: `argocd/apps/infrastructure/argocd/overlays/production/externalsecret-keycloak.yaml`
   - 從 Vault 同步 `secret/argocd/oauth`
 
 - [ ] **配置 ArgoCD RBAC**
-  - 文件: `argocd/apps/infrastructure/argocd/overlays/argocd-rbac-cm.yaml`
+  - 文件: `argocd/apps/infrastructure/argocd/overlays/production/argocd-rbac-cm.yaml`
   - 映射 Keycloak roles (admin, editor, viewer) 到 ArgoCD roles
 
 ### 驗證步驟 (待執行)
@@ -797,7 +797,7 @@
 ### 當前狀態 ⚠️
 
 - [x] **Grafana 當前域名**: `grafana.detectviz.internal`
-  - 文件: `argocd/apps/observability/grafana/overlays/values.yaml`
+  - 文件: `argocd/apps/observability/grafana/overlays/production/values.yaml`
   - Lines: 219, 386 (GF_SERVER_DOMAIN)
   - Lines: 419-421 (OAuth URLs)
   - **需求**: 遷移到 `grafana.detectviz.com`
@@ -822,19 +822,19 @@
   - 過渡期保留舊 URI: `https://grafana.detectviz.internal/*`
 
 - [ ] **更新 Grafana 配置**
-  - 文件: `argocd/apps/observability/grafana/overlays/values.yaml`
+  - 文件: `argocd/apps/observability/grafana/overlays/production/values.yaml`
   - 修改 `GF_SERVER_DOMAIN`: `grafana.detectviz.com`
   - 修改 `grafana.ini.server.domain`: `grafana.detectviz.com`
   - 檢查 OAuth URLs (是否也遷移 Keycloak 域名)
 
 - [ ] **創建 Grafana Ingress**
-  - 文件: `argocd/apps/observability/grafana/overlays/ingress.yaml`
+  - 文件: `argocd/apps/observability/grafana/overlays/production/ingress.yaml`
   - Host: `grafana.detectviz.com`
   - TLS: cert-manager 自動生成
   - Annotations: nginx ingress, WebSocket 支持
 
 - [ ] **更新 Kustomization**
-  - 文件: `argocd/apps/observability/grafana/overlays/kustomization.yaml`
+  - 文件: `argocd/apps/observability/grafana/overlays/production/kustomization.yaml`
   - 添加 `ingress.yaml` 到 resources
 
 ### 驗證步驟 (待執行)
@@ -900,7 +900,7 @@ argocd app sync grafana
 ## 8.4 ArgoCD RBAC
 
 - [ ] **RBAC Policy 配置**
-  - 文件: `argocd/apps/infrastructure/argocd/overlays/argocd-rbac-cm.yaml`
+  - 文件: `argocd/apps/infrastructure/argocd/overlays/production/argocd-rbac-cm.yaml`
   - Roles: Admin, Editor, Viewer
   - Group mapping via Keycloak
 
