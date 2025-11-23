@@ -223,7 +223,7 @@ sleep 30 && kubectl get applications -n argocd
 ```
 
 > [!NOTE]
-> `apps-appset` 目前直接指定各應用的 overlay 目錄（例：`argocd/apps/observability/grafana/overlays`）。如此可確保 overlay 中的 Helm values、ExternalSecret 及額外資源全數被載入。若需要新增服務，請務必：
+> `apps-appset` 目前直接指定各應用的 overlay 目錄（例：`argocd/apps/observability/grafana/overlays/production`）。如此可確保 overlay 中的 Helm values、ExternalSecret 及額外資源全數被載入。若需要新增服務，請務必：
 > 1. 建立 `base/` 與 `overlays/` 的 kustomization 結構。
 > 2. 將新的 ApplicationSet `path` 指向 overlay。
 > 3. 在提交前執行 `kustomize build --enable-helm <overlay-path>`，確認輸出完整且無錯誤。
@@ -1071,4 +1071,4 @@ kubectl get pv
 - Vault 路徑規範: `VAULT_PATH_STRUCTURE.md`
 - 應用配置說明: `APP_CONFIG_NOTES.md`
 - SSO 遷移計劃: `docs/app-guide/sso-domain-migration-plan.md`
-- Dashboard 管理: `argocd/apps/observability/grafana/overlays/dashboards/README.md`
+- Dashboard 管理: `argocd/apps/observability/grafana/overlays/production/dashboards/README.md`

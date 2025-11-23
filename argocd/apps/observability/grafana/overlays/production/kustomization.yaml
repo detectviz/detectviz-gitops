@@ -4,7 +4,7 @@ kind: Kustomization
 namespace: grafana
 
 resources:
-  - ../base
+  - ../../base
   - externalsecret-db.yaml
   - externalsecret-admin.yaml
   - externalsecret-oauth.yaml

@@ -6,7 +6,7 @@ namespace: postgresql
 
 # 先引用 base Helm Chart，再追加 HPA 等額外資源
 resources:
-  - ../base
+  - ../../base
   - pgbouncer-hpa.yaml
 
 # 補充標籤

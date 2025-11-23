@@ -5,7 +5,7 @@ kind: Kustomization
 namespace: monitoring
 
 resources:
-  - ../base
+  - ../../base
 
 patchesStrategicMerge:
   - patch-alloy-tolerations.yaml

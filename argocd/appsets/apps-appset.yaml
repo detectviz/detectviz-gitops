@@ -15,58 +15,69 @@ spec:
             path: argocd/apps/observability/postgresql/overlays/production
             namespace: postgresql
             category: platform-service
+            syncWave: "1"
 
           - name: keycloak
-            path: argocd/apps/identity/keycloak/overlays
+            path: argocd/apps/identity/keycloak/overlays/production
             namespace: keycloak
             category: platform-service
+            syncWave: "2"
 
           - name: pgbouncer-hpa
-            path: argocd/apps/observability/pgbouncer-hpa/overlays
+            path: argocd/apps/observability/pgbouncer-hpa/overlays/production
             namespace: postgresql
             category: platform-service
+            syncWave: "2"
 
           # Application Layer (獨立 namespace)
           - name: grafana
-            path: argocd/apps/observability/grafana/overlays
+            path: argocd/apps/observability/grafana/overlays/production
             namespace: grafana
             category: application
+            syncWave: "4"
 
           # Observability Backend (統一 monitoring namespace)
-          - name: prometheus
-            path: argocd/apps/observability/prometheus/overlays
+          - name: minio
+            path: argocd/apps/observability/minio/overlays/production
             namespace: monitoring
             category: observability
+            syncWave: "1"
+
+          - name: prometheus
+            path: argocd/apps/observability/prometheus/overlays/production
+            namespace: monitoring
+            category: observability
+            syncWave: "3"
 
           - name: loki
-            path: argocd/apps/observability/loki/overlays
+            path: argocd/apps/observability/loki/overlays/production
             namespace: monitoring
             category: observability
+            syncWave: "3"
 
           - name: tempo
-            path: argocd/apps/observability/tempo/overlays
+            path: argocd/apps/observability/tempo/overlays/production
             namespace: monitoring
             category: observability
+            syncWave: "3"
 
           - name: mimir
-            path: argocd/apps/observability/mimir/overlays
+            path: argocd/apps/observability/mimir/overlays/production
             namespace: monitoring
             category: observability
-
-          - name: minio
-            path: argocd/apps/observability/minio/overlays
-            namespace: monitoring
-            category: observability
+            syncWave: "3"
 
           - name: alertmanager
-            path: argocd/apps/observability/alertmanager/overlays
+            path: argocd/apps/observability/alertmanager/overlays/production
             namespace: monitoring
             category: observability
+            syncWave: "3"
 
           - name: alloy
-            path: argocd/apps/observability/alloy/overlays
+            path: argocd/apps/observability/alloy/overlays/production
             namespace: monitoring
             category: observability
+            syncWave: "3"
 
   template:
     metadata:
@@ -76,6 +87,7 @@ spec:
         app.kubernetes.io/category: "{{category}}"
       annotations:
         argocd.argoproj.io/manifest-generate-paths: "{{path}}"
+        argocd.argoproj.io/sync-wave: "{{syncWave}}"
     spec:
       project: default
       source:

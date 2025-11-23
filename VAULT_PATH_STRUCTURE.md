@@ -189,9 +189,9 @@ spec:
 
 **Namespace**: `grafana`
 **文件**:
-- `argocd/apps/observability/grafana/overlays/externalsecret-admin.yaml`
-- `argocd/apps/observability/grafana/overlays/externalsecret-db.yaml`
-- `argocd/apps/observability/grafana/overlays/externalsecret-oauth.yaml`
+- `argocd/apps/observability/grafana/overlays/production/externalsecret-admin.yaml`
+- `argocd/apps/observability/grafana/overlays/production/externalsecret-db.yaml`
+- `argocd/apps/observability/grafana/overlays/production/externalsecret-oauth.yaml`
 
 ```yaml
 # Admin credentials

@@ -73,7 +73,7 @@
 - 無需大幅修改現有配置
 - Dex 提供額外的 token 管理功能
 
-**檔案**: `argocd/apps/infrastructure/argocd/overlays/argocd-cm.yaml`
+**檔案**: `argocd/apps/infrastructure/argocd/overlays/production/argocd-cm.yaml`
 
 **修改**:
 ```yaml
@@ -122,7 +122,7 @@ data:
 
 **ExternalSecret 配置**:
 
-創建 `argocd/apps/infrastructure/argocd/overlays/externalsecret-keycloak.yaml`:
+創建 `argocd/apps/infrastructure/argocd/overlays/production/externalsecret-keycloak.yaml`:
 ```yaml
 apiVersion: external-secrets.io/v1beta1
 kind: ExternalSecret
@@ -158,7 +158,7 @@ spec:
 - 失去 Dex 的靈活性
 - 需要更多配置修改
 
-**檔案**: `argocd/apps/infrastructure/argocd/overlays/argocd-cm.yaml`
+**檔案**: `argocd/apps/infrastructure/argocd/overlays/production/argocd-cm.yaml`
 
 **修改**:
 ```yaml
@@ -184,7 +184,7 @@ data:
 
 #### A.3 配置 ArgoCD RBAC
 
-**檔案**: `argocd/apps/infrastructure/argocd/overlays/argocd-rbac-cm.yaml`
+**檔案**: `argocd/apps/infrastructure/argocd/overlays/production/argocd-rbac-cm.yaml`
 
 ```yaml
 apiVersion: v1
@@ -286,7 +286,7 @@ echo "192.168.0.10 grafana.detectviz.com" >> /etc/hosts
 
 #### B.3 更新 Grafana 配置
 
-**檔案**: `argocd/apps/observability/grafana/overlays/values.yaml`
+**檔案**: `argocd/apps/observability/grafana/overlays/production/values.yaml`
 
 **修改 1**: 更新環境變數 (lines 218-221)
 ```yaml
@@ -324,7 +324,7 @@ grafana.ini:
 
 #### B.4 創建 Grafana Ingress
 
-**創建檔案**: `argocd/apps/observability/grafana/overlays/ingress.yaml`
+**創建檔案**: `argocd/apps/observability/grafana/overlays/production/ingress.yaml`
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -369,7 +369,7 @@ spec:
                   number: 80
 ```
 
-**更新 Kustomization**: `argocd/apps/observability/grafana/overlays/kustomization.yaml`
+**更新 Kustomization**: `argocd/apps/observability/grafana/overlays/production/kustomization.yaml`
 
 ```yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
@@ -393,7 +393,7 @@ helmCharts:
 
 1. **提交變更**:
    ```bash
-   git add argocd/apps/observability/grafana/overlays/
+   git add argocd/apps/observability/grafana/overlays/production/
    git commit -m "Migrate Grafana domain to detectviz.com"
    git push
    ```
