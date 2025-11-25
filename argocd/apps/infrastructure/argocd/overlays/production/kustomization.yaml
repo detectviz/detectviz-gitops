@@ -9,6 +9,10 @@ namespace: argocd
 resources:
   # ArgoCD 配置
   - argocd-cm.yaml
+  - externalsecret.yaml
+
+patches:
+  - path: delete-secrets.yaml
 
 # 注意:
 # - ArgoCD 本身由 Ansible 通過 Helm chart 安裝

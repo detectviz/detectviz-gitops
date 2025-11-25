@@ -140,6 +140,12 @@ spec:
     # 平台服務命名空間
     - namespace: detectviz
       server: https://kubernetes.default.svc
+    - namespace: postgresql
+      server: https://kubernetes.default.svc
+    - namespace: keycloak
+      server: https://kubernetes.default.svc
+    - namespace: grafana
+      server: https://kubernetes.default.svc
 
     # 密鑰管理命名空間
     - namespace: vault
@@ -342,3 +348,25 @@ spec:
       - group: ""
         kind: ConfigMap
         name: kube-root-ca.crt
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: infra
+  namespace: argocd
+  description: "Infrastructure Components Project"
+spec:
+  description: "Infrastructure Components (CNI, Storage, Secrets, Ingress)"
+  sourceRepos:
+    - "*"
+  destinations:
+    - namespace: "*"
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: "*"
+      kind: "*"
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"
+  orphanedResources:
+    warn: true

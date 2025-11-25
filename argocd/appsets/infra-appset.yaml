@@ -15,10 +15,10 @@ spec:
           - path: argocd/apps/infrastructure/*
   template:
     metadata:
-      name: "{{path.basename}}"
+      name: "infra-{{path.basename}}"
       namespace: argocd
     spec:
-      project: default
+      project: infra
       source:
         repoURL: "git@github.com:detectviz/detectviz-gitops.git"
         targetRevision: main

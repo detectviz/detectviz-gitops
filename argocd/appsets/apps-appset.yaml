@@ -10,72 +10,83 @@ spec:
   generators:
     - list:
         elements:
-          # Platform Services (獨立 namespace)
+          # Platform Services (獨立 namespace) - Project: detectviz
           - name: postgresql
             path: argocd/apps/observability/postgresql/overlays/production
             namespace: postgresql
+            project: detectviz
             category: platform-service
             syncWave: "1"
 
           - name: keycloak
             path: argocd/apps/identity/keycloak/overlays/production
             namespace: keycloak
+            project: detectviz
             category: platform-service
             syncWave: "2"
 
           - name: pgbouncer-hpa
             path: argocd/apps/observability/pgbouncer-hpa/overlays/production
             namespace: postgresql
+            project: detectviz
             category: platform-service
             syncWave: "2"
 
-          # Application Layer (獨立 namespace)
+          # Application Layer (獨立 namespace) - Project: detectviz
           - name: grafana
             path: argocd/apps/observability/grafana/overlays/production
             namespace: grafana
+            project: detectviz
             category: application
             syncWave: "4"
 
-          # Observability Backend (統一 monitoring namespace)
+          # Observability Backend (統一 monitoring namespace) - Project: platform-observability
           - name: minio
             path: argocd/apps/observability/minio/overlays/production
             namespace: monitoring
+            project: platform-observability
             category: observability
             syncWave: "1"
 
           - name: prometheus
             path: argocd/apps/observability/prometheus/overlays/production
             namespace: monitoring
+            project: platform-observability
             category: observability
             syncWave: "3"
 
           - name: loki
             path: argocd/apps/observability/loki/overlays/production
             namespace: monitoring
+            project: platform-observability
             category: observability
             syncWave: "3"
 
           - name: tempo
             path: argocd/apps/observability/tempo/overlays/production
             namespace: monitoring
+            project: platform-observability
             category: observability
             syncWave: "3"
 
           - name: mimir
             path: argocd/apps/observability/mimir/overlays/production
             namespace: monitoring
+            project: platform-observability
             category: observability
             syncWave: "3"
 
           - name: alertmanager
             path: argocd/apps/observability/alertmanager/overlays/production
             namespace: monitoring
+            project: platform-observability
             category: observability
             syncWave: "3"
 
           - name: alloy
             path: argocd/apps/observability/alloy/overlays/production
             namespace: monitoring
+            project: platform-observability
             category: observability
             syncWave: "3"
 
@@ -89,7 +100,7 @@ spec:
         argocd.argoproj.io/manifest-generate-paths: "{{path}}"
         argocd.argoproj.io/sync-wave: "{{syncWave}}"
     spec:
-      project: default
+      project: "{{project}}"
       source:
         repoURL: "git@github.com:detectviz/detectviz-gitops.git"
         targetRevision: main

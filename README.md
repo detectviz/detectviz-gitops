@@ -125,6 +125,8 @@ graph LR
 | infra-topolvm | `argocd/apps/infrastructure/topolvm` | `argocd/apps/infrastructure/topolvm/overlays/production` |
 | infra-vault | `argocd/apps/infrastructure/vault` | `argocd/apps/infrastructure/vault/overlays/production` |
 
+> 註：`infra-appset` 會自動為每個應用程式名稱添加 `infra-` 前綴 (例如: `infra-argocd`, `infra-vault`)。
+
 > 在新增基礎設施元件時，請複製同樣的結構，並執行 `kustomize build --enable-helm argocd/apps/infrastructure/<component>` 驗證根層入口確實載入 overlay。若 Helm Chart 需要存取外部網路而環境受限，請在 PR 測試結果中紀錄替代驗證方式。
 
 ## Grafana 預設整合
