@@ -32,14 +32,6 @@ spec:
             category: platform-service
             syncWave: "2"
 
-          # Application Layer (獨立 namespace) - Project: detectviz
-          - name: grafana
-            path: argocd/apps/observability/grafana/overlays/production
-            namespace: grafana
-            project: detectviz
-            category: application
-            syncWave: "4"
-
           # Observability Backend (統一 monitoring namespace) - Project: platform-observability
           - name: minio
             path: argocd/apps/observability/minio/overlays/production
@@ -47,6 +39,13 @@ spec:
             project: platform-observability
             category: observability
             syncWave: "1"
+
+          - name: mimir
+            path: argocd/apps/observability/mimir/overlays/production
+            namespace: monitoring
+            project: platform-observability
+            category: observability
+            syncWave: "2"
 
           - name: prometheus
             path: argocd/apps/observability/prometheus/overlays/production
@@ -69,13 +68,6 @@ spec:
             category: observability
             syncWave: "3"
 
-          - name: mimir
-            path: argocd/apps/observability/mimir/overlays/production
-            namespace: monitoring
-            project: platform-observability
-            category: observability
-            syncWave: "3"
-
           - name: alertmanager
             path: argocd/apps/observability/alertmanager/overlays/production
             namespace: monitoring
@@ -88,8 +80,15 @@ spec:
             namespace: monitoring
             project: platform-observability
             category: observability
-            syncWave: "3"
+            syncWave: "4"
 
+          # Application Layer (獨立 namespace) - Project: detectviz
+          - name: grafana
+            path: argocd/apps/observability/grafana/overlays/production
+            namespace: grafana
+            project: detectviz
+            category: application
+            syncWave: "5"
   template:
     metadata:
       name: "{{name}}"

@@ -249,24 +249,25 @@ sleep 30 && kubectl get applications -n argocd
        └─ 提供 OAuth2 for grafana/argocd
 
 階段 2: Observability Backend (統一 monitoring namespace)
-  ├─ minio (S3 storage)
+  ├─ minio (S3 storage) - Wave 1
   │    └─ 被 mimir 依賴
   │
-  ├─ prometheus (2 replicas, 15天 retention)
+  ├─ mimir (S3/Minio backend, HA 2 replicas) - Wave 2
+  │
+  ├─ prometheus (2 replicas, 15天 retention) - Wave 3
   │    └─ remoteWrite to mimir
   │
-  ├─ loki (TSDB, 30天 retention, 2 replicas)
-  ├─ tempo (OTLP receivers, 30天 retention, 2 replicas)
-  ├─ mimir (S3/Minio backend, HA 2 replicas)
-  ├─ alloy (DaemonSet, 取代 node-exporter)
+  ├─ loki (TSDB, 30天 retention, 2 replicas) - Wave 3
+  ├─ tempo (OTLP receivers, 30天 retention, 2 replicas) - Wave 3
+  ├─ alertmanager (3 replicas) - Wave 3
+  │
+  ├─ alloy (DaemonSet, 取代 node-exporter) - Wave 4
   │    ├─ host metrics → prometheus
   │    ├─ pod logs → loki
   │    └─ systemd logs → loki
   │
-  └─ alertmanager (3 replicas)
-
 階段 3: Application Layer (獨立 namespace)
-  └─ grafana (namespace: grafana, HA 2 replicas)
+  └─ grafana (namespace: grafana, HA 2 replicas) - Wave 5
        ├─ 依賴 postgresql (存儲)
        ├─ 依賴 keycloak (OAuth2)
        └─ 依賴 mimir/loki/tempo (資料源)

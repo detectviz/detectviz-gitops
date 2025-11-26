@@ -237,26 +237,7 @@
       ]
     }
   ],
-  "users": [
-    {
-      "username": "admin@detectviz.com",
-      "email": "admin@detectviz.com",
-      "emailVerified": true,
-      "enabled": true,
-      "firstName": "Admin",
-      "lastName": "User",
-      "realmRoles": [
-        "admin"
-      ],
-      "credentials": [
-        {
-          "type": "password",
-          "value": "changeme",
-          "temporary": true
-        }
-      ]
-    }
-  ],
+  "users": [],
   "groups": [],
   "requiredActions": [
     {

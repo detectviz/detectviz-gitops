@@ -120,7 +120,6 @@ graph LR
 | infra-external-secrets-operator | `argocd/apps/infrastructure/external-secrets-operator` | `argocd/apps/infrastructure/external-secrets-operator/overlays/production` |
 | infra-ingress-nginx | `argocd/apps/infrastructure/ingress-nginx` | `argocd/apps/infrastructure/ingress-nginx/overlays/production` |
 | infra-kube-vip | `argocd/apps/infrastructure/kube-vip` | `argocd/apps/infrastructure/kube-vip/overlays/production` |
-| infra-local-path-provisioner | `argocd/apps/infrastructure/local-path-provisioner` | `argocd/apps/infrastructure/local-path-provisioner/overlays/production` |
 | infra-metallb | `argocd/apps/infrastructure/metallb` | `argocd/apps/infrastructure/metallb/overlays/production` |
 | infra-topolvm | `argocd/apps/infrastructure/topolvm` | `argocd/apps/infrastructure/topolvm/overlays/production` |
 | infra-vault | `argocd/apps/infrastructure/vault` | `argocd/apps/infrastructure/vault/overlays/production` |
