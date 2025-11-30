@@ -99,7 +99,7 @@
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
 
 - name: Verify containerd configuration (驗證 containerd 配置)
-  ansible.builtin.command: containerd --version && crictl version
+  ansible.builtin.shell: containerd --version && crictl version
   become: true
   when: "'masters' in group_names and inventory_hostname == 'master-1'"
 
@@ -425,7 +425,7 @@
   # 說明：使用 server-side apply 來處理大型 manifest,避免 client-side 的限制
 
 - name: "[P2] Verify CRDs are created"
-  ansible.builtin.command: kubectl --kubeconfig=/etc/kubernetes/admin.conf get crds | grep projectcalico.org
+  ansible.builtin.shell: kubectl --kubeconfig=/etc/kubernetes/admin.conf get crds | grep projectcalico.org
   register: calico_crds
   changed_when: false
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
