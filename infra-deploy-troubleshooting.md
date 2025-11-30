@@ -1,8 +1,8 @@
-## 故障排除
+# 故障排除
 
-### 常見問題
+## 常見問題
 
-#### 1. Terraform 部署失敗
+### 1. Terraform 部署失敗
 
 **問題**: VM 創建失敗或網路配置錯誤
 
@@ -21,7 +21,7 @@ cd terraform/
 terraform apply -auto-approve
 ```
 
-#### 2. 網路連通性問題
+### 2. 網路連通性問題
 
 **問題**: VM 之間無法通訊或 DNS 無法解析
 
@@ -42,7 +42,7 @@ ssh ubuntu@192.168.0.11 'nslookup master-1.detectviz.internal'
 ansible-playbook -i ansible/inventory.ini ansible/deploy-cluster.yml --tags network
 ```
 
-#### 3. sysctl 參數未生效
+### 3. sysctl 參數未生效
 
 **問題**: rp_filter 或 ip_forward 未正確設定
 
@@ -61,7 +61,7 @@ ssh ubuntu@192.168.0.11 'sudo sysctl net.ipv4.ip_forward'
 ssh ubuntu@192.168.0.11 'sudo sysctl --system'
 ```
 
-#### 4. Kubernetes 節點未就緒
+### 4. Kubernetes 節點未就緒
 
 **問題**: 節點顯示 NotReady 狀態
 
@@ -80,7 +80,7 @@ kubectl get pods -n kube-system -l k8s-app=kube-proxy
 kubectl get pods -n kube-system -l k8s-app=calico-node
 ```
 
-#### 5. ArgoCD 應用同步失敗
+### 5. ArgoCD 應用同步失敗
 
 **問題**: 應用顯示 OutOfSync 或 Degraded
 
@@ -101,7 +101,7 @@ argocd app delete <app-name>
 argocd app create <app-name> ...
 ```
 
-#### 6. ApplicationSet 路徑錯誤（雞生蛋問題 #1）
+### 6. ApplicationSet 路徑錯誤（雞生蛋問題 #1）
 
 **症狀**:
 ```
@@ -142,7 +142,7 @@ kubectl patch application root -n argocd \
 
 ---
 
-#### 7. AppProject 權限不足（雞生蛋問題 #2）
+### 7. AppProject 權限不足（雞生蛋問題 #2）
 
 **症狀**:
 ```
@@ -179,7 +179,7 @@ clusterResourceWhitelist:
 
 ---
 
-#### 8. cluster-bootstrap CRD 依賴問題（雞生蛋問題 #3）
+### 8. cluster-bootstrap CRD 依賴問題（雞生蛋問題 #3）
 
 **症狀**:
 ```
@@ -221,7 +221,7 @@ metadata:
 
 ---
 
-#### 9. TopoLVM Pod 無法調度（雞生蛋問題 #4）
+### 9. TopoLVM Pod 無法調度（雞生蛋問題 #4）
 
 **症狀**:
 ```
@@ -292,7 +292,7 @@ kubectl get pods -n vault -o wide
 
 ---
 
-#### 11. Ingress-Nginx LoadBalancer 無法分配 IP
+### 10. Ingress-Nginx LoadBalancer 無法分配 IP
 
 **症狀**:
 - ingress-nginx-controller 服務 EXTERNAL-IP 顯示 `<pending>`

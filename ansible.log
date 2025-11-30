@@ -1,0 +1,475 @@
+ansible-playbook -i inventory.ini deploy-cluster.yml
+
+PLAY [[Phase 1] Prepare all nodes for Kubernetes installation (節點初始化)] ********
+
+TASK [Gathering Facts] *************************************************************
+ok: [master-2]
+ok: [master-3]
+ok: [master-1]
+ok: [app-worker]
+
+TASK [common : Disable swap immediately] *******************************************
+ok: [master-2]
+ok: [master-1]
+ok: [master-3]
+ok: [app-worker]
+
+TASK [common : Disable swap permanently in /etc/fstab] *****************************
+ok: [master-3]
+ok: [app-worker]
+ok: [master-2]
+ok: [master-1]
+
+TASK [common : Verify swap is disabled] ********************************************
+ok: [master-1]
+ok: [master-3]
+ok: [master-2]
+ok: [app-worker]
+
+TASK [common : Update apt cache] ***************************************************
+ok: [master-1]
+ok: [master-2]
+ok: [master-3]
+ok: [app-worker]
+
+TASK [common : Install common packages] ********************************************
+ok: [master-1]
+ok: [master-2]
+ok: [master-3]
+ok: [app-worker]
+
+TASK [common : Install Python Kubernetes client (for ansible kubernetes.core modules)] ***
+ok: [master-1]
+ok: [app-worker]
+ok: [master-2]
+ok: [master-3]
+
+TASK [common : Install yq (YAML processor)] ****************************************
+ok: [master-1]
+ok: [master-2]
+ok: [master-3]
+ok: [app-worker]
+
+TASK [common : Add Docker GPG key for containerd] **********************************
+ok: [master-1]
+ok: [master-3]
+ok: [master-2]
+ok: [app-worker]
+
+TASK [common : Add Docker repository for containerd] *******************************
+ok: [master-1]
+ok: [master-2]
+ok: [master-3]
+ok: [app-worker]
+
+TASK [common : Update package index for containerd] ********************************
+changed: [master-1]
+changed: [app-worker]
+changed: [master-3]
+changed: [master-2]
+
+TASK [common : Install containerd] *************************************************
+ok: [master-1]
+ok: [master-2]
+ok: [master-3]
+ok: [app-worker]
+
+TASK [common : Create containerd config directory] *********************************
+ok: [master-3]
+ok: [master-2]
+ok: [app-worker]
+ok: [master-1]
+
+TASK [common : Generate containerd config with CRI enabled] ************************
+ok: [master-3]
+ok: [master-2]
+ok: [app-worker]
+ok: [master-1]
+
+TASK [common : Restart and enable containerd service] ******************************
+changed: [master-2]
+changed: [app-worker]
+changed: [master-3]
+changed: [master-1]
+
+TASK [common : Add Kubernetes GPG key] *********************************************
+ok: [master-2]
+ok: [master-1]
+ok: [master-3]
+ok: [app-worker]
+
+TASK [common : Add Kubernetes repository] ******************************************
+ok: [master-1]
+ok: [master-3]
+ok: [master-2]
+ok: [app-worker]
+
+TASK [common : Update package index for Kubernetes] ********************************
+changed: [app-worker]
+changed: [master-1]
+changed: [master-3]
+changed: [master-2]
+
+TASK [common : Check Internet connectivity (ping 8.8.8.8)] *************************
+ok: [master-2]
+ok: [master-1]
+ok: [master-3]
+ok: [app-worker]
+
+TASK [common : Check DNS resolution (registry.k8s.io)] *****************************
+ok: [master-2]
+ok: [master-1]
+ok: [master-3]
+ok: [app-worker]
+
+TASK [common : Check internal DNS resolution (detectviz.internal)] *****************
+ok: [master-1]
+ok: [app-worker]
+ok: [master-3]
+ok: [master-2]
+
+TASK [common : Display network check results] **************************************
+ok: [master-1] => {
+    "msg": [
+        "✅ Internet connectivity: OK",
+        "✅ DNS resolution (registry.k8s.io): OK",
+        "✅ Internal DNS (master-1.detectviz.internal): OK"
+    ]
+}
+ok: [master-2] => {
+    "msg": [
+        "✅ Internet connectivity: OK",
+        "✅ DNS resolution (registry.k8s.io): OK",
+        "✅ Internal DNS (master-2.detectviz.internal): OK"
+    ]
+}
+ok: [master-3] => {
+    "msg": [
+        "✅ Internet connectivity: OK",
+        "✅ DNS resolution (registry.k8s.io): OK",
+        "✅ Internal DNS (master-3.detectviz.internal): OK"
+    ]
+}
+ok: [app-worker] => {
+    "msg": [
+        "✅ Internet connectivity: OK",
+        "✅ DNS resolution (registry.k8s.io): OK",
+        "✅ Internal DNS (app-worker.detectviz.internal): OK"
+    ]
+}
+
+TASK [common : Install Kubernetes components] **************************************
+ok: [master-1]
+ok: [master-3]
+ok: [app-worker]
+ok: [master-2]
+
+TASK [common : Hold Kubernetes packages to prevent automatic updates] **************
+ok: [master-2] => (item=kubelet)
+ok: [master-1] => (item=kubelet)
+ok: [app-worker] => (item=kubelet)
+ok: [master-3] => (item=kubelet)
+ok: [master-2] => (item=kubeadm)
+ok: [master-1] => (item=kubeadm)
+ok: [app-worker] => (item=kubeadm)
+ok: [master-3] => (item=kubeadm)
+ok: [master-2] => (item=kubectl)
+ok: [master-1] => (item=kubectl)
+ok: [master-3] => (item=kubectl)
+ok: [app-worker] => (item=kubectl)
+
+TASK [common : Enable kubelet service] *********************************************
+ok: [master-1]
+ok: [master-2]
+ok: [master-3]
+ok: [app-worker]
+
+TASK [common : Create crictl configuration] ****************************************
+ok: [master-1]
+ok: [master-2]
+ok: [master-3]
+ok: [app-worker]
+
+TASK [common : Load br_netfilter kernel module] ************************************
+ok: [master-1]
+ok: [master-2]
+ok: [master-3]
+ok: [app-worker]
+
+TASK [common : Ensure br_netfilter loads on boot] **********************************
+ok: [master-1]
+ok: [master-2]
+ok: [master-3]
+ok: [app-worker]
+
+TASK [common : Configure kernel parameters for Kubernetes] *************************
+[WARNING]: Deprecation warnings can be disabled by setting `deprecation_warnings=False` in ansible.cfg.
+[DEPRECATION WARNING]: Importing 'to_native' from 'ansible.module_utils._text' is deprecated. This feature will be removed from ansible-core version 2.24. Use ansible.module_utils.common.text.converters instead.
+ok: [master-1] => (item={'name': 'net.ipv4.ip_forward', 'value': '1'})
+ok: [master-2] => (item={'name': 'net.ipv4.ip_forward', 'value': '1'})
+ok: [master-3] => (item={'name': 'net.ipv4.ip_forward', 'value': '1'})
+ok: [app-worker] => (item={'name': 'net.ipv4.ip_forward', 'value': '1'})
+ok: [master-1] => (item={'name': 'net.bridge.bridge-nf-call-iptables', 'value': '1'})
+ok: [master-3] => (item={'name': 'net.bridge.bridge-nf-call-iptables', 'value': '1'})
+ok: [master-2] => (item={'name': 'net.bridge.bridge-nf-call-iptables', 'value': '1'})
+ok: [app-worker] => (item={'name': 'net.bridge.bridge-nf-call-iptables', 'value': '1'})
+ok: [master-1] => (item={'name': 'net.bridge.bridge-nf-call-ip6tables', 'value': '1'})
+ok: [master-3] => (item={'name': 'net.bridge.bridge-nf-call-ip6tables', 'value': '1'})
+ok: [master-2] => (item={'name': 'net.bridge.bridge-nf-call-ip6tables', 'value': '1'})
+ok: [app-worker] => (item={'name': 'net.bridge.bridge-nf-call-ip6tables', 'value': '1'})
+
+TASK [common : Harden SSH configuration - Disable password authentication] *********
+ok: [master-1]
+ok: [master-2]
+ok: [master-3]
+ok: [app-worker]
+
+TASK [common : Harden SSH configuration - Disable root login] **********************
+ok: [master-1]
+ok: [master-2]
+ok: [master-3]
+ok: [app-worker]
+
+TASK [common : Harden SSH configuration - Disable empty passwords] *****************
+ok: [master-1]
+ok: [master-2]
+ok: [master-3]
+ok: [app-worker]
+
+TASK [common : Display SSH hardening status] ***************************************
+ok: [master-1] => {
+    "msg": [
+        "✅ SSH security hardening applied:",
+        "  - Password authentication: DISABLED",
+        "  - Root password login: DISABLED",
+        "  - Empty passwords: DISABLED",
+        "  - SSH key authentication: REQUIRED"
+    ]
+}
+ok: [master-2] => {
+    "msg": [
+        "✅ SSH security hardening applied:",
+        "  - Password authentication: DISABLED",
+        "  - Root password login: DISABLED",
+        "  - Empty passwords: DISABLED",
+        "  - SSH key authentication: REQUIRED"
+    ]
+}
+ok: [master-3] => {
+    "msg": [
+        "✅ SSH security hardening applied:",
+        "  - Password authentication: DISABLED",
+        "  - Root password login: DISABLED",
+        "  - Empty passwords: DISABLED",
+        "  - SSH key authentication: REQUIRED"
+    ]
+}
+ok: [app-worker] => {
+    "msg": [
+        "✅ SSH security hardening applied:",
+        "  - Password authentication: DISABLED",
+        "  - Root password login: DISABLED",
+        "  - Empty passwords: DISABLED",
+        "  - SSH key authentication: REQUIRED"
+    ]
+}
+
+PLAY [[Phase 2] Configure Multi-Network Architecture (網路配置)] *******************
+
+TASK [network : Configure netplan for dual network interfaces] *********************
+ok: [master-3]
+ok: [master-2]
+ok: [master-1]
+ok: [app-worker]
+
+TASK [network : Ensure netplan configuration is applied] ***************************
+
+TASK [network : Ensure netplan configuration is applied] ***************************
+
+TASK [network : Ensure netplan configuration is applied] ***************************
+
+TASK [network : Ensure netplan configuration is applied] ***************************
+
+PLAY [[Phase 3] Initialize and join control plane nodes (Master 節點部署)] *********
+
+TASK [master : Check if kubeadm has been initialized (檢查 kubeadm 是否已初始化)] ***
+ok: [master-1]
+
+TASK [master : [HA] Install Kube-VIP required packages (安裝 Kube-VIP 所需套件)] ***
+ok: [master-1]
+
+TASK [master : Clean up any previous Kubernetes installation (清理任何之前的 Kubernetes 安裝)] ***
+skipping: [master-1]
+
+TASK [master : Remove old Kubernetes manifests and configs (移除舊的 Kubernetes manifests 和配置)] ***
+skipping: [master-1] => (item=/etc/kubernetes) 
+skipping: [master-1] => (item=/var/lib/kubelet) 
+skipping: [master-1] => (item=/var/lib/etcd) 
+skipping: [master-1]
+
+TASK [master : Ensure Kubernetes directories exist (確保 Kubernetes 目錄存在)] *****
+ok: [master-1] => (item={'path': '/etc/kubernetes', 'mode': '0755'})
+ok: [master-1] => (item={'path': '/etc/kubernetes/manifests', 'mode': '0755'})
+ok: [master-1] => (item={'path': '/var/lib/kubelet', 'mode': '0750'})
+ok: [master-1] => (item={'path': '/var/lib/etcd', 'mode': '0700'})
+
+TASK [master : Restart containerd to apply new sandbox image (重啟 containerd 以應用新的 sandbox 鏡像)] ***
+changed: [master-1]
+
+TASK [master : Verify containerd configuration (驗證 containerd 配置)] *************
+changed: [master-1]
+
+TASK [master : Check containerd sandbox image (檢查 containerd sandbox 鏡像)] ******
+changed: [master-1]
+
+TASK [master : Display containerd sandbox image setting (顯示 containerd sandbox 鏡像設定)] ***
+ok: [master-1] => {
+    "msg": "Containerd sandbox image:     sandbox_image = \"registry.k8s.io/pause:3.10\""
+}
+
+TASK [master : Generate kubeadm config (生成 kubeadm 配置)] ************************
+ok: [master-1]
+
+TASK [master : Pre-pull Kubernetes images (預先拉取 Kubernetes 鏡像)] **************
+changed: [master-1]
+
+TASK [master : Initialize first control plane node (初始化第一個控制平面節點)] *****
+ok: [master-1]
+
+TASK [master : Ensure .kube directory exists for root user (確保 root 用戶的 .kube 目錄存在)] ***
+ok: [master-1]
+
+TASK [master : Copy admin kubeconfig to root (複製 admin kubeconfig 到 root)'s .kube directory] ***
+ok: [master-1]
+
+TASK [master : Ensure .kube directory exists for ansible user (確保 ansible 用戶的 .kube 目錄存在)] ***
+ok: [master-1]
+
+TASK [master : Copy admin kubeconfig to ansible user (複製 admin kubeconfig 到 ansible 用戶)] ***
+ok: [master-1]
+
+TASK [master : Fetch admin kubeconfig to control node (獲取 admin kubeconfig 到控制節點)] ***
+ok: [master-1]
+
+TASK [master : Wait for API server to be ready (等待 API server 準備就緒)] *********
+Pausing for 30 seconds
+(ctrl+C then 'C' = continue early, ctrl+C then 'A' = abort)
+ok: [master-1]
+
+TASK [master : [HA] Deploy Kube-VIP static pod for Control Plane HA (部署 Kube-VIP 靜態 Pod)] ***
+ok: [master-1]
+
+TASK [master : [HA] Wait for Kube-VIP pod to start (等待 Kube-VIP Pod 啟動)] *******
+Pausing for 15 seconds
+(ctrl+C then 'C' = continue early, ctrl+C then 'A' = abort)
+ok: [master-1]
+
+TASK [master : [HA] Verify VIP is bound to interface (驗證 VIP 已綁定到網卡)] ******
+ok: [master-1]
+
+TASK [master : [HA] Display VIP status (顯示 VIP 狀態)] ****************************
+ok: [master-1] => {
+    "msg": " ✅ VIP 192.168.0.10 已成功綁定到 eth0 網卡 \n"
+}
+
+TASK [master : [HA] Manually bind VIP if not bound (如果未綁定則手動綁定 VIP)] *****
+skipping: [master-1]
+
+TASK [master : [HA] Verify VIP is now bound (再次驗證 VIP 綁定)] *******************
+ok: [master-1]
+
+TASK [master : [HA] Display final VIP status (顯示最終 VIP 狀態)] ******************
+ok: [master-1] => {
+    "msg": " ✅ VIP 192.168.0.10 已成功綁定到 eth0 網卡 \n"
+}
+
+TASK [master : Check DNS resolution for API server (檢查 API server 的 DNS 解析)] ***
+ok: [master-1]
+
+TASK [master : Display DNS check result (顯示 DNS 檢查結果)] ***********************
+ok: [master-1] => {
+    "msg": "DNS resolution result: DNS resolution successful"
+}
+
+TASK [master : Add API server to /etc/hosts as fallback (將 API server 添加到 /etc/hosts 作為後備)] ***
+ok: [master-1]
+
+TASK [master : Update kubeconfig server URLs to use local IP (更新 kubeconfig server URL 以使用本地 IP)] ***
+[DEPRECATION WARNING]: INJECT_FACTS_AS_VARS default to `True` is deprecated, top-level facts will not be auto injected after the change. This feature will be removed from ansible-core version 2.24.
+Origin: /Users/zoe/Documents/github/detectviz-gitops/ansible/roles/master/tasks/main.yml:283:11
+
+281     path: "{{ item }}"
+282     regexp: "server: https://k8s-api.detectviz.internal:6443"
+283     line: "server: https://{{ ansible_default_ipv4.address }}:6443"
+              ^ column 11
+
+Use `ansible_facts["fact_name"]` (no `ansible_` prefix) instead.
+
+ok: [master-1] => (item=/etc/kubernetes/admin.conf)
+ok: [master-1] => (item=/etc/kubernetes/super-admin.conf)
+
+TASK [master : Check API server health (檢查 API server 健康狀態)] *****************
+ok: [master-1]
+
+TASK [master : Create cluster-admin clusterrolebinding for kubernetes-admin user (為 kubernetes-admin 用戶創建 cluster-admin clusterrolebinding)] ***
+[ERROR]: Task failed: Module failed: non-zero return code
+Origin: /Users/zoe/Documents/github/detectviz-gitops/ansible/roles/master/tasks/main.yml:299:3
+
+297   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
+298
+299 - name: Create cluster-admin clusterrolebinding for kubernetes-admin user (為 kubernetes-admin 用戶創建 cluster-admin ...
+      ^ column 3
+
+fatal: [master-1]: FAILED! => {"changed": false, "cmd": ["kubectl", "--kubeconfig=/etc/kubernetes/super-admin.conf", "create", "clusterrolebinding", "kubernetes-admin-binding", "--clusterrole=cluster-admin", "--user=kubernetes-admin"], "delta": "0:00:00.030069", "end": "2025-11-30 16:45:53.417004", "msg": "non-zero return code", "rc": 1, "start": "2025-11-30 16:45:53.386935", "stderr": "error: failed to create clusterrolebinding: clusterrolebindings.rbac.authorization.k8s.io \"kubernetes-admin-binding\" already exists", "stderr_lines": ["error: failed to create clusterrolebinding: clusterrolebindings.rbac.authorization.k8s.io \"kubernetes-admin-binding\" already exists"], "stdout": "", "stdout_lines": []}
+...ignoring
+
+TASK [master : Upload control plane certificates (上傳控制平面證書)] ***************
+ok: [master-1]
+
+TASK [master : Set kubeadm certificate key fact (設置 kubeadm 證書金鑰事實)] *******
+ok: [master-1]
+
+TASK [master : Generate join commands using kubeadm (使用 kubeadm 生成 join 命令)] ***
+ok: [master-1]
+
+TASK [master : Parse join commands (解析 join 命令)] *******************************
+ok: [master-1]
+
+TASK [master : [P2] Download Calico Manifest] **************************************
+changed: [master-1]
+
+TASK [master : [P2] Modify Calico Manifest with Pod CIDR] **************************
+ok: [master-1]
+
+TASK [master : [P2] Configure Calico VXLAN MTU (1450 for host MTU 1500)] ***********
+changed: [master-1]
+
+TASK [master : [P2] Verify Calico MTU configuration] *******************************
+ok: [master-1]
+
+TASK [master : [P2] Display Calico MTU configuration] ******************************
+ok: [master-1] => {
+    "msg": [
+        "✅ Calico VXLAN MTU configured:",
+        "  - Host MTU: 1500",
+        "  - VXLAN MTU: 1450 (1500 - 50 overhead)",
+        "  - VXLAN Mode: Always (required for VM environment)"
+    ]
+}
+
+TASK [master : [P2] Apply Calico CNI (server-side apply for large manifest)] *******
+[ERROR]: Task failed: Module failed: non-zero return code
+Origin: /Users/zoe/Documents/github/detectviz-gitops/ansible/roles/master/tasks/main.yml:408:3
+
+406   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
+407
+408 - name: "[P2] Apply Calico CNI (server-side apply for large manifest)"
+      ^ column 3
+
+fatal: [master-1]: FAILED! => {"changed": true, "cmd": ["kubectl", "--kubeconfig=/etc/kubernetes/admin.conf", "apply", "-f", "/tmp/calico-patched.yaml", "--server-side", "--force-conflicts"], "delta": "0:00:01.528101", "end": "2025-11-30 16:45:58.146516", "msg": "non-zero return code", "rc": 1, "start": "2025-11-30 16:45:56.618415", "stderr": "Error from server: failed to create typed patch object (kube-system/calico-node; apps/v1, Kind=DaemonSet): errors:\n  .spec.template.spec.containers[name=\"calico-node\"].env: duplicate entries for key [name=\"FELIX_VXLANMTU\"]\n  .spec.template.spec.containers[name=\"calico-node\"].env: duplicate entries for key [name=\"FELIX_WIREGUARDMTU\"]", "stderr_lines": ["Error from server: failed to create typed patch object (kube-system/calico-node; apps/v1, Kind=DaemonSet): errors:", "  .spec.template.spec.containers[name=\"calico-node\"].env: duplicate entries for key [name=\"FELIX_VXLANMTU\"]", "  .spec.template.spec.containers[name=\"calico-node\"].env: duplicate entries for key [name=\"FELIX_WIREGUARDMTU\"]"], "stdout": "poddisruptionbudget.policy/calico-kube-controllers serverside-applied\nserviceaccount/calico-kube-controllers serverside-applied\nserviceaccount/calico-node serverside-applied\nserviceaccount/calico-cni-plugin serverside-applied\nconfigmap/calico-config serverside-applied\ncustomresourcedefinition.apiextensions.k8s.io/bgpconfigurations.crd.projectcalico.org serverside-applied\ncustomresourcedefinition.apiextensions.k8s.io/bgpfilters.crd.projectcalico.org serverside-applied\ncustomresourcedefinition.apiextensions.k8s.io/bgppeers.crd.projectcalico.org serverside-applied\ncustomresourcedefinition.apiextensions.k8s.io/blockaffinities.crd.projectcalico.org serverside-applied\ncustomresourcedefinition.apiextensions.k8s.io/caliconodestatuses.crd.projectcalico.org serverside-applied\ncustomresourcedefinition.apiextensions.k8s.io/clusterinformations.crd.projectcalico.org serverside-applied\ncustomresourcedefinition.apiextensions.k8s.io/felixconfigurations.crd.projectcalico.org serverside-applied\ncustomresourcedefinition.apiextensions.k8s.io/globalnetworkpolicies.crd.projectcalico.org serverside-applied\ncustomresourcedefinition.apiextensions.k8s.io/globalnetworksets.crd.projectcalico.org serverside-applied\ncustomresourcedefinition.apiextensions.k8s.io/hostendpoints.crd.projectcalico.org serverside-applied\ncustomresourcedefinition.apiextensions.k8s.io/ipamblocks.crd.projectcalico.org serverside-applied\ncustomresourcedefinition.apiextensions.k8s.io/ipamconfigs.crd.projectcalico.org serverside-applied\ncustomresourcedefinition.apiextensions.k8s.io/ipamhandles.crd.projectcalico.org serverside-applied\ncustomresourcedefinition.apiextensions.k8s.io/ippools.crd.projectcalico.org serverside-applied\ncustomresourcedefinition.apiextensions.k8s.io/ipreservations.crd.projectcalico.org serverside-applied\ncustomresourcedefinition.apiextensions.k8s.io/kubecontrollersconfigurations.crd.projectcalico.org serverside-applied\ncustomresourcedefinition.apiextensions.k8s.io/networkpolicies.crd.projectcalico.org serverside-applied\ncustomresourcedefinition.apiextensions.k8s.io/networksets.crd.projectcalico.org serverside-applied\nclusterrole.rbac.authorization.k8s.io/calico-kube-controllers serverside-applied\nclusterrole.rbac.authorization.k8s.io/calico-node serverside-applied\nclusterrole.rbac.authorization.k8s.io/calico-cni-plugin serverside-applied\nclusterrolebinding.rbac.authorization.k8s.io/calico-kube-controllers serverside-applied\nclusterrolebinding.rbac.authorization.k8s.io/calico-node serverside-applied\nclusterrolebinding.rbac.authorization.k8s.io/calico-cni-plugin serverside-applied\ndeployment.apps/calico-kube-controllers serverside-applied", "stdout_lines": ["poddisruptionbudget.policy/calico-kube-controllers serverside-applied", "serviceaccount/calico-kube-controllers serverside-applied", "serviceaccount/calico-node serverside-applied", "serviceaccount/calico-cni-plugin serverside-applied", "configmap/calico-config serverside-applied", "customresourcedefinition.apiextensions.k8s.io/bgpconfigurations.crd.projectcalico.org serverside-applied", "customresourcedefinition.apiextensions.k8s.io/bgpfilters.crd.projectcalico.org serverside-applied", "customresourcedefinition.apiextensions.k8s.io/bgppeers.crd.projectcalico.org serverside-applied", "customresourcedefinition.apiextensions.k8s.io/blockaffinities.crd.projectcalico.org serverside-applied", "customresourcedefinition.apiextensions.k8s.io/caliconodestatuses.crd.projectcalico.org serverside-applied", "customresourcedefinition.apiextensions.k8s.io/clusterinformations.crd.projectcalico.org serverside-applied", "customresourcedefinition.apiextensions.k8s.io/felixconfigurations.crd.projectcalico.org serverside-applied", "customresourcedefinition.apiextensions.k8s.io/globalnetworkpolicies.crd.projectcalico.org serverside-applied", "customresourcedefinition.apiextensions.k8s.io/globalnetworksets.crd.projectcalico.org serverside-applied", "customresourcedefinition.apiextensions.k8s.io/hostendpoints.crd.projectcalico.org serverside-applied", "customresourcedefinition.apiextensions.k8s.io/ipamblocks.crd.projectcalico.org serverside-applied", "customresourcedefinition.apiextensions.k8s.io/ipamconfigs.crd.projectcalico.org serverside-applied", "customresourcedefinition.apiextensions.k8s.io/ipamhandles.crd.projectcalico.org serverside-applied", "customresourcedefinition.apiextensions.k8s.io/ippools.crd.projectcalico.org serverside-applied", "customresourcedefinition.apiextensions.k8s.io/ipreservations.crd.projectcalico.org serverside-applied", "customresourcedefinition.apiextensions.k8s.io/kubecontrollersconfigurations.crd.projectcalico.org serverside-applied", "customresourcedefinition.apiextensions.k8s.io/networkpolicies.crd.projectcalico.org serverside-applied", "customresourcedefinition.apiextensions.k8s.io/networksets.crd.projectcalico.org serverside-applied", "clusterrole.rbac.authorization.k8s.io/calico-kube-controllers serverside-applied", "clusterrole.rbac.authorization.k8s.io/calico-node serverside-applied", "clusterrole.rbac.authorization.k8s.io/calico-cni-plugin serverside-applied", "clusterrolebinding.rbac.authorization.k8s.io/calico-kube-controllers serverside-applied", "clusterrolebinding.rbac.authorization.k8s.io/calico-node serverside-applied", "clusterrolebinding.rbac.authorization.k8s.io/calico-cni-plugin serverside-applied", "deployment.apps/calico-kube-controllers serverside-applied"]}
+
+PLAY RECAP *************************************************************************
+app-worker                 : ok=34   changed=3    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+master-1                   : ok=71   changed=9    unreachable=0    failed=1    skipped=3    rescued=0    ignored=1   
+master-2                   : ok=34   changed=3    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+master-3                   : ok=34   changed=3    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   

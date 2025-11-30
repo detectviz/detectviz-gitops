@@ -50,7 +50,7 @@
 
 ### 6.0 Vault Secrets 初始化（必須先執行）
 
-**重要**: 本項目使用 **Vault + ExternalSecrets Operator (ESO)** 管理所有應用 Secrets。舊版 `scripts/bootstrap-app-secrets.sh` / `scripts/bootstrap-monitoring-secrets.sh` 已全面下線，禁止再於 Kubernetes 直接建立 Secret。
+**重要**: 本項目使用 **Vault + ExternalSecrets Operator (ESO)** 管理所有應用 Secrets。舊版 `scripts/bootstrap-app-secrets.sh` / `scripts/bootstrap-monitoring-secrets.sh` / `scripts/setup-vault-secrets.sh` 已全面下線，禁止再於 Kubernetes 直接建立 Secret。
 
 #### Vault Secret 路徑結構
 

@@ -6,7 +6,8 @@
 # ============================================
 
 # TOML 配置版本（必須為 2）
-version = 2
+# TOML 配置版本（移除 version = 2 以兼容舊版插件 ID）
+# version = 2
 
 # ============================================
 # 插件配置區塊
@@ -15,11 +16,6 @@ version = 2
 
   # CRI 插件：提供 Kubernetes 容器運行時接口
   [plugins."io.containerd.grpc.v1.cri"]
-
-    # Sandbox 鏡像：Kubernetes Pod 的暫停容器鏡像
-    # 此鏡像用於為每個 Pod 創建網路命名空間
-    # 必須與 kubeadm 使用的版本一致
-    sandbox_image = "{{ containerd_sandbox_image }}"
 
     # Containerd 核心配置
     [plugins."io.containerd.grpc.v1.cri".containerd]
@@ -58,6 +54,11 @@ version = 2
       # CNI 配置文件目錄
       # 網路插件的配置文件存放位置
       conf_dir = "/etc/cni/net.d"
+
+    # Sandbox 鏡像：Kubernetes Pod 的暫停容器鏡像
+    # 此鏡像用於為每個 Pod 創建網路命名空間
+    # 必須與 kubeadm 使用的版本一致
+    sandbox_image = "{{ containerd_sandbox_image }}"
 
     # 容器鏡像倉庫配置
     [plugins."io.containerd.grpc.v1.cri".registry]

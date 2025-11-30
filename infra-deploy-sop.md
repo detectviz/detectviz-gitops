@@ -718,11 +718,11 @@ kubectl get pods -n topolvm-system
 **建議同步順序**:
 1. `infra-argocd` (ArgoCD 自我配置 - 應用 URL 設定)
 2. `infra-cert-manager` (優先 - 提供 Certificate CRDs)
-3. `infra-ingress-nginx`
-4. `infra-metallb`
-5. `infra-external-secrets-operator`
-6. `infra-vault`
-7. `infra-topolvm`
+3. `infra-metallb` (提供 LoadBalancer IP Pool)
+4. `infra-ingress-nginx` (依賴 MetalLB 分配 IP)
+5. `infra-topolvm` (提供 StorageClass)
+6. `infra-vault` (依賴 TopoLVM 存儲)
+7. `infra-external-secrets-operator` (依賴 Vault)
 
 > [!TIP]
 > 如果 ApplicationSet 沒有自動生成上述 Application，請先在 Repo 中檢查對應的 `argocd/apps/infrastructure/<component>/kustomization.yaml` 是否仍引用 `resources: - overlays`。修正後重新執行 `kubectl patch application root ...` 觸發 `root-argocd-app` Refresh，即可重新載入最新的 infra-appset 配置。
@@ -736,8 +736,8 @@ kubectl get pods -n topolvm-system
 ssh ubuntu@192.168.0.11
 
 # 同步所有基礎設施 Applications
-for app in infra-argocd infra-cert-manager infra-ingress-nginx infra-metallb \
-           infra-external-secrets-operator infra-vault infra-topolvm; do
+for app in infra-argocd infra-cert-manager infra-metallb infra-ingress-nginx \
+           infra-topolvm infra-vault infra-external-secrets-operator; do
   sudo kubectl --kubeconfig=/etc/kubernetes/admin.conf patch application $app -n argocd \
     -p='{"operation":{"initiatedBy":{"username":"admin"},"sync":{"prune":true}}}' \
     --type=merge
@@ -761,11 +761,11 @@ argocd login localhost:8080 \
 
 # 3. 同步所有基礎設施 Applications
 argocd app sync infra-cert-manager
-argocd app sync infra-ingress-nginx
 argocd app sync infra-metallb
-argocd app sync infra-external-secrets-operator
-argocd app sync infra-vault
+argocd app sync infra-ingress-nginx
 argocd app sync infra-topolvm
+argocd app sync infra-vault
+argocd app sync infra-external-secrets-operator
 
 # 4. 檢查狀態
 argocd app list

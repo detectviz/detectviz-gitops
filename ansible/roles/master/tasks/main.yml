@@ -173,7 +173,7 @@
 - name: Fetch admin kubeconfig to control node (獲取 admin kubeconfig 到控制節點)
   ansible.builtin.fetch:
     src: /etc/kubernetes/admin.conf
-    dest: "{{ playbook_dir }}/kubeconfig/admin.conf"
+    dest: "{{ playbook_dir }}/kubeconfig/"
     flat: yes
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
 
@@ -405,14 +405,38 @@
       - "  - VXLAN Mode: Always (required for VM environment)"
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
 
-- name: "[P2] Apply Calico CNI"
-  ansible.builtin.command: "kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f {{ calico_manifest_local_path }} --validate=false"
+- name: "[P2] Apply Calico CNI (server-side apply for large manifest)"
+  ansible.builtin.command: "kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f {{ calico_manifest_local_path }} --server-side --force-conflicts"
   become: true
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
   changed_when: true
+  # 說明：使用 server-side apply 來處理大型 manifest,避免 client-side 的限制
+
+- name: "[P2] Verify CRDs are created"
+  ansible.builtin.command: kubectl --kubeconfig=/etc/kubernetes/admin.conf get crds | grep projectcalico.org
+  register: calico_crds
+  changed_when: false
+  when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
+
+- name: "[P2] Display installed Calico CRDs"
+  ansible.builtin.debug:
+    msg: "Installed Calico CRDs: {{ calico_crds.stdout_lines }}"
+  when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
+
+- name: "[P2] Wait for Calico CRDs to be created"
+  ansible.builtin.shell: |
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf get crd felixconfigurations.projectcalico.org &> /dev/null
+    echo $?
+  register: crd_check
+  retries: 20
+  delay: 10
+  until: crd_check.stdout == "0"
+  changed_when: false
+  when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
+  # 說明：等待 Calico CRD 被創建
 
 - name: "[P2] Wait for Calico CRDs to be ready"
-  ansible.builtin.command: kubectl --kubeconfig=/etc/kubernetes/admin.conf wait --for condition=established --timeout=60s crd/felixconfigurations.crd.projectcalico.org
+  ansible.builtin.command: kubectl --kubeconfig=/etc/kubernetes/admin.conf wait --for condition=established --timeout=180s crd/felixconfigurations.projectcalico.org
   register: crd_wait
   retries: 3
   delay: 10
@@ -421,16 +445,13 @@
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
   # 說明：等待 Calico CRD 就緒後才能應用 FelixConfiguration
 
-- name: "[P2] Copy FelixConfiguration template"
-  ansible.builtin.template:
-    src: felix-configuration.yaml.j2
-    dest: /tmp/felix-configuration.yaml
-    mode: "0644"
-  when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
-
 - name: "[P2] Apply Calico FelixConfiguration"
   ansible.builtin.command: kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f /tmp/felix-configuration.yaml
   become: true
+  register: felix_apply
+  retries: 3
+  delay: 10
+  until: felix_apply.rc == 0
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
   changed_when: true
   # 說明：應用 FelixConfiguration 以設定全域 VXLAN MTU 和其他網路參數
