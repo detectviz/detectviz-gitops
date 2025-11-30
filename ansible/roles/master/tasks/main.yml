@@ -437,7 +437,7 @@
 
 - name: "[P2] Wait for Calico CRDs to be created"
   ansible.builtin.shell: |
-    kubectl --kubeconfig=/etc/kubernetes/admin.conf get crd felixconfigurations.projectcalico.org &> /dev/null
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf get crd felixconfigurations.crd.projectcalico.org &> /dev/null
     echo $?
   register: crd_check
   retries: 20
@@ -448,7 +448,7 @@
   # 說明：等待 Calico CRD 被創建
 
 - name: "[P2] Wait for Calico CRDs to be ready"
-  ansible.builtin.command: kubectl --kubeconfig=/etc/kubernetes/admin.conf wait --for condition=established --timeout=180s crd/felixconfigurations.projectcalico.org
+  ansible.builtin.command: kubectl --kubeconfig=/etc/kubernetes/admin.conf wait --for condition=established --timeout=180s crd/felixconfigurations.crd.projectcalico.org
   register: crd_wait
   retries: 3
   delay: 10
