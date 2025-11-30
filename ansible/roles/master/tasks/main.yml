@@ -296,13 +296,20 @@
   changed_when: false
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
 
+- name: Check if cluster-admin clusterrolebinding exists (檢查 clusterrolebinding 是否存在)
+  ansible.builtin.command: kubectl --kubeconfig=/etc/kubernetes/super-admin.conf get clusterrolebinding kubernetes-admin-binding
+  register: crb_check
+  failed_when: false
+  changed_when: false
+  when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
+
 - name: Create cluster-admin clusterrolebinding for kubernetes-admin user (為 kubernetes-admin 用戶創建 cluster-admin clusterrolebinding)
   ansible.builtin.command: >
     kubectl --kubeconfig=/etc/kubernetes/super-admin.conf create clusterrolebinding kubernetes-admin-binding
     --clusterrole=cluster-admin --user=kubernetes-admin
-  ignore_errors: true
-  changed_when: false
-  when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
+  when:
+    - "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
+    - crb_check.rc != 0
 
 - name: Upload control plane certificates (上傳控制平面證書)
   ansible.builtin.command: kubeadm init phase upload-certs --upload-certs
@@ -361,6 +368,7 @@
     url: "{{ calico_manifest_url }}"
     dest: "{{ calico_manifest_local_path }}"
     mode: "0644"
+    force: true
   become: false
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
 
