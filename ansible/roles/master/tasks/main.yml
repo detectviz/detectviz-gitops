@@ -384,14 +384,18 @@
 - name: "[P2] Configure Calico VXLAN MTU (1450 for host MTU 1500)"
   ansible.builtin.shell: |
     # 找到 calico-node DaemonSet 並添加 FELIX_VXLANMTU 環境變數
+    # 先刪除現有的 env 變數 (避免 upstream manifest 已包含時造成重複)，再添加新的
     yq eval -i '
       (select(.kind == "DaemonSet" and .metadata.name == "calico-node") |
        .spec.template.spec.containers[] |
        select(.name == "calico-node") |
-       .env) += [
-        {"name": "FELIX_VXLANMTU", "value": "1450"},
-        {"name": "FELIX_WIREGUARDMTU", "value": "1450"}
-      ]
+       .env) |= (
+        map(select(.name != "FELIX_VXLANMTU" and .name != "FELIX_WIREGUARDMTU")) +
+        [
+          {"name": "FELIX_VXLANMTU", "value": "1450"},
+          {"name": "FELIX_WIREGUARDMTU", "value": "1450"}
+        ]
+      )
     ' {{ calico_manifest_local_path }}
   become: false
   when: "'masters' in group_names and groups['masters'].index(inventory_hostname) == 0"
